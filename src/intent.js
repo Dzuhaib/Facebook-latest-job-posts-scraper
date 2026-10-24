@@ -12,6 +12,87 @@ const NEGATIVE_WEIGHT = 3;
 const NEGATIVE_CAP = 12;
 const NOISE_WEIGHT = 2;
 
+const SELLER_PATTERNS = [
+  {
+    name: "self-identified provider",
+    pattern:
+      /\b(?:i am|i'm|we are|we're)\s+(?:a|an)?\s*(?:professional|freelance|senior|expert|experienced)?\s*(?:website|web|full[- ]?stack|fullstack|frontend|front-end|backend|back-end|wordpress|shopify|woocommerce|react(?:\.js)?|next(?:\.js)?|node(?:\.js)?|php|laravel|python|mern|mean|seo|automation|ai)\s+(?:stack\s+)?(?:developer|designer|expert|specialist|freelancer|consultant)\b/i
+  },
+  {
+    name: "first-person service offer",
+    pattern:
+      /\b(?:i|we)\s+(?:build|design|develop|create|make)\s+(?:[\w-]+\s+){0,2}(?:websites?|web ?apps?|web applications?|online stores?|e-?commerce stores?|landing pages?|shopify stores?|wordpress sites?)\b/i
+  },
+  {
+    name: "first-person service offer",
+    pattern:
+      /\b(?:i|we)\s+(?:offer|provide|deliver)\s+(?:[\w-]+\s+){0,2}(?:web|websites?|seo|automation|digital|design|development|services?)\b/i
+  },
+  {
+    name: "services list",
+    pattern: /\b(?:my|our)\s+services\s+(?:include|are|cover|offer)\b/i
+  },
+  {
+    name: "why choose me",
+    pattern: /\bwhy choose (?:me|us)\b/i
+  },
+  {
+    name: "hire me",
+    pattern: /\bhire me\b/i
+  },
+  {
+    name: "pitch to build",
+    pattern:
+      /\b(?:i|we)\s+(?:can|will)\s+(?:build|design|develop|create|make)\s+(?:your|a|an|it|this|that|websites?|web ?apps?)\b/i
+  },
+  {
+    name: "pitch to help",
+    pattern: /\b(?:i|we)\s+can\s+help\b/i
+  },
+  {
+    name: "availability pitch",
+    pattern:
+      /\b(?:available for work|available for freelance|available for hire|open to work|open for projects|open for freelance|taking on new clients|accepting new clients)\b/i
+  },
+  {
+    name: "contact pitch",
+    pattern:
+      /\b(?:dm|pm|message|contact|inbox|whatsapp|text|call|reach out to)\s+(?:me|us)\b(?!\s+(?:if|when|with|your)\b)/i
+  },
+  {
+    name: "call to action",
+    pattern:
+      /\b(?:let'?s talk|let'?s discuss|book a call|schedule a call|let me know|send a message)\b(?!\s+(?:if|when|with|your)\b)/i
+  },
+  {
+    name: "link in bio",
+    pattern: /\blink in (?:bio|profile)\b/i
+  },
+  {
+    name: "specialist pitch",
+    pattern: /\b(?:i|we)\s+specialize\b/i
+  },
+  {
+    name: "conditional service pitch",
+    pattern:
+      /\bif you (?:need|want|are looking for|'re looking for)\b[\s\S]{0,80}\b(?:website|web|seo|automation|developer|designer)\b/i
+  },
+  {
+    name: "services offer",
+    pattern:
+      /\b(?:i|we)\s+services?\s+offer\b|\bservices?\s+(?:i|we)\s+offer\b|\bservices?\s+offer\s+(?:for|to)\s+clients\b/i
+  },
+  {
+    name: "portfolio pitch",
+    pattern:
+      /\b(?:i|we)\s+(?:can|will)\s+(?:share|send|show)\s+(?:my|our)\s+(?:portfolio|samples|work)\b/i
+  },
+  {
+    name: "send a message pitch",
+    pattern: /\bsend\s+(?:me|us)\s+a\s+message\b(?!\s+(?:if|when|with|your)\b)/i
+  }
+];
+
 const regexCache = new Map();
 
 function escapeRegex(value) {
@@ -81,6 +162,12 @@ export function mergeLexicon(extra = {}) {
   };
 }
 
+function detectSeller(haystack) {
+  return SELLER_PATTERNS.filter(({ pattern }) => pattern.test(haystack)).map(
+    ({ name }) => name
+  );
+}
+
 export function scorePost(text, options = {}) {
   const lexicon = mergeLexicon(options.extra);
   const minScore = options.minScore ?? 4;
@@ -93,7 +180,8 @@ export function scorePost(text, options = {}) {
     hiring: [],
     intentPhrases: [],
     negative: [],
-    noise: []
+    noise: [],
+    seller: detectSeller(haystack)
   };
 
   let servicePoints = 0;
@@ -146,6 +234,10 @@ export function scorePost(text, options = {}) {
     services,
     matched,
     trigger,
-    isLead: services.length > 0 && trigger && score >= minScore
+    isLead:
+      services.length > 0 &&
+      trigger &&
+      score >= minScore &&
+      matched.seller.length === 0
   };
 }

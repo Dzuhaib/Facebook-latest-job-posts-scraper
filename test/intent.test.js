@@ -39,6 +39,85 @@ test("rejects agencies selling their own services", () => {
   assert.ok(result.score < 4);
 });
 
+test("rejects freelance service advertisements", () => {
+  const result = scorePost(`I am a professional website developer with 4 year of experience
+I services offer for clients
+Full stack Custom websites
+1. Html
+2. Css
+3. JavaScript
+4. React Js
+5. Node Js
+6. MongoDB
+WordPress websites
+1. Elementer pro
+2. Wp bakery
+3. Wo-commerce
+4. E-commerce
+5. Gutanburg design
+Why choose me?
+High quality and responsive work
+Timely delivered
+On your requirements
+I can share my portfolio as well
+If you need any type of website
+Contact me via whatsapp (link in profile)`);
+  assert.equal(result.isLead, false);
+  assert.ok(result.matched.seller.length > 0);
+});
+
+test("rejects seller contact pitches", () => {
+  const result = scorePost("Need a website? DM me for pricing.");
+  assert.equal(result.isLead, false);
+  assert.ok(result.matched.seller.length > 0);
+});
+
+test("rejects seller call-to-action pitches", () => {
+  const result = scorePost("Need a website? Let's talk.");
+  assert.equal(result.isLead, false);
+  assert.ok(result.matched.seller.length > 0);
+});
+
+test("keeps buyers who ask for rates", () => {
+  const result = scorePost("We need a web developer. Let me know your rate.");
+  assert.equal(result.isLead, true);
+  assert.deepEqual(result.matched.seller, []);
+});
+
+test("rejects self-identified developer ads", () => {
+  const result = scorePost("I am a full stack developer. I can build your next website.");
+  assert.equal(result.isLead, false);
+  assert.ok(result.matched.seller.length > 0);
+});
+
+test("rejects agency offer posts", () => {
+  const result = scorePost("We offer SEO services. Contact us today.");
+  assert.equal(result.isLead, false);
+  assert.ok(result.matched.seller.length > 0);
+});
+
+test("keeps buyers who ask for a portfolio", () => {
+  const result = scorePost(
+    "We need a web developer. Send me your portfolio and availability."
+  );
+  assert.equal(result.isLead, true);
+  assert.deepEqual(result.matched.seller, []);
+});
+
+test("keeps buyers with experience requirements", () => {
+  const result = scorePost(
+    "We're hiring a web developer with 3 years of experience. Budget is $2,000."
+  );
+  assert.equal(result.isLead, true);
+  assert.deepEqual(result.matched.seller, []);
+});
+
+test("keeps buyers who describe themselves", () => {
+  const result = scorePost("I am a business owner looking for a web developer.");
+  assert.equal(result.isLead, true);
+  assert.deepEqual(result.matched.seller, []);
+});
+
 test("rejects tool questions", () => {
   const result = scorePost("Anyone using Shopify for their store? Any tips?");
   assert.equal(result.isLead, false);

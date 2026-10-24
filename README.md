@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white" alt="Node.js 20.12+" />
   <img src="https://img.shields.io/badge/Apify-official%20actors-00A67E" alt="Apify official actors" />
-  <img src="https://img.shields.io/badge/tests-61%20passing-brightgreen" alt="61 tests passing" />
+  <img src="https://img.shields.io/badge/tests-70%20passing-brightgreen" alt="70 tests passing" />
   <img src="https://img.shields.io/badge/dashboard-local-blue" alt="Local dashboard" />
 </p>
 
@@ -36,6 +36,7 @@ It is built for freelancers and agencies who want to answer real requests quickl
 
 - **Recency guard** — the time window is enforced by Apify and again locally, so old posts cannot slip through.
 - **Intent scoring** — every post is scored from service matches, need/hiring phrases, and intent phrases; negative and noise terms subtract points.
+- **Strict buyer-only gate** — rejects freelancer ads, service offers, availability pitches, and "DM me" sales posts.
 - **Custom services and skills** — add your own keywords from the dashboard Settings or `config.json`.
 - **Multi-select service filter** — choose as many services as you want; results match any selected service.
 - **Contact tracking** — mark leads as contacted; the state survives rescans.
@@ -220,16 +221,20 @@ Every post is normalized and scored. Points come from:
 | Service keyword match | +2 per match, capped |
 | Custom skill match | +2 per match, capped |
 | Need phrase (`need`, `looking for`, `budget`, ...) | +2 per match, capped |
-| Hiring phrase (`hiring`, `paid gig`, `freelancer`, ...) | +2 per match, capped |
+| Hiring phrase (`hiring`, `paid gig`, `job opening`, ...) | +2 per match, capped |
 | Intent phrase (`need a website`, `who can build`, ...) | +3 per match, capped |
 | Negative phrase (self-promotion, job seekers, ...) | subtracts points |
 | Noise phrase (tutorials, tool questions, ...) | subtracts points |
+| Seller / self-promotion pattern | rejects the post |
 
 A post becomes a lead only when it has:
 
 1. At least one service or skill match
 2. At least one need, hiring, or intent trigger
 3. A score greater than or equal to `minScore`
+4. No seller/self-promotion pattern
+
+The seller gate is intentionally strict. Posts such as "I am a professional website developer", "I build websites", "We offer SEO services", "Why choose me?", "DM me for pricing", and "Contact me via WhatsApp" are rejected even if they mention services and buying words. This keeps the list focused on people hiring or asking for help, not freelancers advertising themselves.
 
 **Min score** is therefore a strictness dial:
 
