@@ -1,0 +1,151 @@
+import { DEFAULT_LEXICON } from "./lexicon.js";
+
+const SERVICE_WEIGHT = 2;
+const SERVICE_CAP = 6;
+const NEED_WEIGHT = 2;
+const NEED_CAP = 4;
+const HIRING_WEIGHT = 2;
+const HIRING_CAP = 4;
+const PHRASE_WEIGHT = 3;
+const PHRASE_CAP = 6;
+const NEGATIVE_WEIGHT = 3;
+const NEGATIVE_CAP = 12;
+const NOISE_WEIGHT = 2;
+
+const regexCache = new Map();
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matcherFor(phrase) {
+  const key = phrase.toLowerCase().trim();
+  let re = regexCache.get(key);
+  if (!re) {
+    re = new RegExp(
+      `(?<![\\p{L}\\p{N}])${escapeRegex(key)}(?![\\p{L}\\p{N}])`,
+      "iu"
+    );
+    regexCache.set(key, re);
+  }
+  return re;
+}
+
+export function normalizeText(text) {
+  return String(text ?? "")
+    .replace(/[\u2018\u2019\u02BC\u0060\u00B4]/g, "'")
+    .replace(/\b(?:https?:\/\/|www\.)\S+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function uniqueMatches(haystack, phrases) {
+  const hits = [];
+  for (const phrase of phrases) {
+    if (matcherFor(phrase).test(haystack)) {
+      hits.push(phrase);
+    }
+  }
+  return hits;
+}
+
+function mergeList(base, extra) {
+  if (!Array.isArray(extra) || extra.length === 0) return base;
+  const seen = new Set(base.map((word) => word.toLowerCase()));
+  const merged = [...base];
+  for (const word of extra) {
+    const clean = String(word ?? "").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(clean);
+  }
+  return merged;
+}
+
+export function mergeLexicon(extra = {}) {
+  const services = {};
+  for (const [category, words] of Object.entries(DEFAULT_LEXICON.services)) {
+    services[category] = mergeList(words, extra.services?.[category]);
+  }
+  return {
+    services,
+    skills: mergeList([], extra.skills),
+    need: mergeList(DEFAULT_LEXICON.need, extra.need),
+    hiring: mergeList(DEFAULT_LEXICON.hiring, extra.hiring),
+    intentPhrases: mergeList(DEFAULT_LEXICON.intentPhrases, extra.intentPhrases),
+    negative: mergeList(DEFAULT_LEXICON.negative, extra.negative),
+    noise: mergeList(DEFAULT_LEXICON.noise, extra.noise)
+  };
+}
+
+export function scorePost(text, options = {}) {
+  const lexicon = mergeLexicon(options.extra);
+  const minScore = options.minScore ?? 4;
+  const haystack = normalizeText(text);
+
+  const matched = {
+    services: {},
+    skills: [],
+    need: [],
+    hiring: [],
+    intentPhrases: [],
+    negative: [],
+    noise: []
+  };
+
+  let servicePoints = 0;
+  for (const [category, phrases] of Object.entries(lexicon.services)) {
+    const hits = uniqueMatches(haystack, phrases);
+    if (hits.length > 0) {
+      matched.services[category] = hits;
+      servicePoints += Math.min(hits.length * SERVICE_WEIGHT, SERVICE_CAP);
+    }
+  }
+  servicePoints = Math.min(servicePoints, SERVICE_CAP * 3);
+
+  const serviceNames = new Set(Object.keys(matched.services).map((name) => name.toLowerCase()));
+  matched.skills = uniqueMatches(haystack, lexicon.skills).filter(
+    (skill) => !serviceNames.has(skill.toLowerCase())
+  );
+  const skillPoints = Math.min(matched.skills.length * SERVICE_WEIGHT, SERVICE_CAP);
+
+  matched.need = uniqueMatches(haystack, lexicon.need);
+  matched.hiring = uniqueMatches(haystack, lexicon.hiring);
+  matched.intentPhrases = uniqueMatches(haystack, lexicon.intentPhrases);
+  matched.negative = uniqueMatches(haystack, lexicon.negative);
+  matched.noise = uniqueMatches(haystack, lexicon.noise);
+
+  const needPoints = Math.min(matched.need.length * NEED_WEIGHT, NEED_CAP);
+  const hiringPoints = Math.min(matched.hiring.length * HIRING_WEIGHT, HIRING_CAP);
+  const phrasePoints = Math.min(matched.intentPhrases.length * PHRASE_WEIGHT, PHRASE_CAP);
+  const negativePoints = Math.min(
+    matched.negative.length * NEGATIVE_WEIGHT,
+    NEGATIVE_CAP
+  );
+  const noisePoints = matched.noise.length * NOISE_WEIGHT;
+
+  const services = [
+    ...new Set([...Object.keys(matched.services), ...matched.skills])
+  ];
+  const score =
+    servicePoints +
+    skillPoints +
+    needPoints +
+    hiringPoints +
+    phrasePoints -
+    negativePoints -
+    noisePoints;
+  const trigger =
+    matched.need.length > 0 || matched.hiring.length > 0 || matched.intentPhrases.length > 0;
+
+  return {
+    score,
+    services,
+    matched,
+    trigger,
+    isLead: services.length > 0 && trigger && score >= minScore
+  };
+}

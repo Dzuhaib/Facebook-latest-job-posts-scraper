@@ -1,0 +1,29 @@
+{
+  "windowMinutes": 10,
+  "maxResultsPerSource": 30,
+  "minScore": 4,
+  "watchIntervalMinutes": 10,
+  "sources": {
+    "groups": [],
+    "pages": []
+  },
+  "intent": {
+    "extra": {
+      "services": {
+        "automation": [],
+        "web": [],
+        "seo": []
+      },
+      "skills": [],
+      "need": [],
+      "hiring": [],
+      "intentPhrases": [],
+      "negative": [],
+      "noise": []
+    }
+  },
+  "output": {
+    "dir": "./output",
+    "keepJsonl": true
+  }
+}
