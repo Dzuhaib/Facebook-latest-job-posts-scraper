@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white" alt="Node.js 20.12+" />
   <img src="https://img.shields.io/badge/Apify-official%20actors-00A67E" alt="Apify official actors" />
-  <img src="https://img.shields.io/badge/tests-70%20passing-brightgreen" alt="70 tests passing" />
+  <img src="https://img.shields.io/badge/tests-75%20passing-brightgreen" alt="75 tests passing" />
   <img src="https://img.shields.io/badge/dashboard-local-blue" alt="Local dashboard" />
 </p>
 
@@ -39,6 +39,7 @@ It is built for freelancers and agencies who want to answer real requests quickl
 - **Strict buyer-only gate** — rejects freelancer ads, service offers, availability pitches, and "DM me" sales posts.
 - **Custom services and skills** — add your own keywords from the dashboard Settings or `config.json`.
 - **Multi-select service filter** — choose as many services as you want; results match any selected service.
+- **Duplicate cleanup** — reposts with the same author and text are merged into one lead; existing duplicates can be removed from the sidebar.
 - **Contact tracking** — mark leads as contacted; the state survives rescans.
 - **Demo mode** — load sample leads without spending Apify credits.
 - **Demo-only cleanup** — remove sample leads without touching real Facebook leads.
@@ -152,6 +153,7 @@ The dashboard is designed for fast triage:
 - **Mark** — flags a lead as contacted. Click again to undo.
 - **Load demo leads** — loads sample leads for testing the UI.
 - **Remove demo** — deletes only demo leads, never real ones.
+- **Remove duplicates** — appears when reposts are found; keeps one copy and preserves contact state.
 - **Clear filters** — appears when a filter is active.
 - **Fetch last** — sets the scan window in minutes or hours and saves it automatically.
 - **Settings** — edits the token, score threshold, per-source limit, sources, and services/skills.
@@ -165,6 +167,12 @@ The service filter is multi-select. Open it, tick any number of services or skil
 - Services detected in the current lead data
 
 Custom skills appear even when no lead matches them yet, so you can add a new service before your first relevant post arrives.
+
+### Duplicate handling
+
+A duplicate is the same author plus the same normalized post text. New scans skip reposts in the same run, and the lead store merges matching posts from later scans instead of adding another row. The kept lead preserves its contact state and merges services, score, engagement, and first/last seen timestamps. Short posts under 40 characters are left alone to avoid merging unrelated generic requests.
+
+If older data already contains duplicates, the sidebar shows **Remove duplicates (N)**. Removing them keeps one lead per group and preserves any contacted state from the discarded copies.
 
 ## Configuration
 
@@ -331,6 +339,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 │   ├── normalize.js         Unified post shape
 │   ├── intent.js            Keyword scoring
 │   ├── filter.js            Recency, intent, and dedupe pipeline
+│   ├── duplicates.js        Repost fingerprinting and duplicate cleanup
 │   ├── state.js             Seen-post store
 │   ├── report.js            JSON, CSV, Markdown output
 │   └── fixtures/            Sample posts for dry runs
@@ -353,7 +362,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 npm test
 ```
 
-The test suite covers configuration, Apify input, normalization, intent scoring, deduplication, lead storage, settings, demo removal, and dashboard API behavior.
+The test suite covers configuration, Apify input, normalization, intent scoring, duplicate detection and removal, lead storage, settings, demo removal, and dashboard API behavior.
 
 ## Contributing
 

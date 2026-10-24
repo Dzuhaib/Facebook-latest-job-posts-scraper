@@ -133,6 +133,10 @@ export function createApp({
     res.json({ removed });
   });
 
+  app.delete("/api/leads/duplicates", (req, res) => {
+    res.json(leadStore.removeDuplicates());
+  });
+
   app.patch("/api/leads/:id", (req, res) => {
     const { contacted } = req.body ?? {};
     if (typeof contacted !== "boolean") {

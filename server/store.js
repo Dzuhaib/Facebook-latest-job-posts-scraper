@@ -2,6 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { ageMinutes } from "../src/filter.js";
 import { DEMO_POST_IDS } from "../src/dryrun.js";
+import {
+  countDuplicateLeads,
+  dedupeLeads,
+  duplicateFingerprint,
+  mergeDuplicateGroup
+} from "../src/duplicates.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -98,6 +104,26 @@ function cleanLead(lead, nowIso) {
   };
 }
 
+function mergeDuplicateLead(existing, incoming, nowIso) {
+  const merged = mergeDuplicateGroup([existing, incoming]);
+  return {
+    ...merged,
+    id: existing.id,
+    postedAt: existing.postedAt,
+    postedAtMs: existing.postedAtMs,
+    author: existing.author,
+    authorUrl: existing.authorUrl,
+    authorPic: existing.authorPic,
+    sourceName: existing.sourceName,
+    sourceUrl: existing.sourceUrl,
+    sourceKind: existing.sourceKind,
+    postUrl: existing.postUrl,
+    text: existing.text,
+    firstSeenAt: merged.firstSeenAt ?? existing.firstSeenAt,
+    lastSeenAt: nowIso
+  };
+}
+
 export class LeadStore {
   constructor(filePath, options = {}) {
     this.filePath = filePath;
@@ -160,37 +186,64 @@ export class LeadStore {
     const nowIso = new Date(now).toISOString();
     let added = 0;
     let updated = 0;
+    const byFingerprint = new Map();
+
+    for (const lead of this.leads.values()) {
+      const fingerprint = duplicateFingerprint(lead);
+      if (fingerprint && !byFingerprint.has(fingerprint)) {
+        byFingerprint.set(fingerprint, lead);
+      }
+    }
 
     for (const lead of Array.isArray(leads) ? leads : []) {
       const clean = cleanLead(lead, nowIso);
       if (!clean) continue;
 
+      const fingerprint = duplicateFingerprint(clean);
       const existing = this.leads.get(clean.id);
-      if (!existing) {
-        this.leads.set(clean.id, clean);
-        added += 1;
+      if (existing) {
+        const oldFingerprint = duplicateFingerprint(existing);
+        const updatedLead = {
+          ...existing,
+          postedAt: clean.postedAt,
+          postedAtMs: clean.postedAtMs,
+          score: clean.score,
+          services: clean.services,
+          author: clean.author,
+          authorUrl: clean.authorUrl,
+          authorPic: clean.authorPic,
+          sourceName: clean.sourceName,
+          sourceUrl: clean.sourceUrl,
+          sourceKind: clean.sourceKind,
+          postUrl: clean.postUrl,
+          text: clean.text,
+          engagement: clean.engagement,
+          demo: clean.demo,
+          lastSeenAt: nowIso
+        };
+        this.leads.set(clean.id, updatedLead);
+        if (oldFingerprint && oldFingerprint !== fingerprint) {
+          if (byFingerprint.get(oldFingerprint)?.id === existing.id) {
+            byFingerprint.delete(oldFingerprint);
+          }
+        }
+        if (fingerprint) byFingerprint.set(fingerprint, updatedLead);
+        updated += 1;
         continue;
       }
 
-      this.leads.set(clean.id, {
-        ...existing,
-        postedAt: clean.postedAt,
-        postedAtMs: clean.postedAtMs,
-        score: clean.score,
-        services: clean.services,
-        author: clean.author,
-        authorUrl: clean.authorUrl,
-        authorPic: clean.authorPic,
-        sourceName: clean.sourceName,
-        sourceUrl: clean.sourceUrl,
-        sourceKind: clean.sourceKind,
-        postUrl: clean.postUrl,
-        text: clean.text,
-        engagement: clean.engagement,
-        demo: clean.demo,
-        lastSeenAt: nowIso
-      });
-      updated += 1;
+      const duplicate = fingerprint ? byFingerprint.get(fingerprint) : null;
+      if (duplicate) {
+        const merged = mergeDuplicateLead(duplicate, clean, nowIso);
+        this.leads.set(merged.id, merged);
+        byFingerprint.set(fingerprint, merged);
+        updated += 1;
+        continue;
+      }
+
+      this.leads.set(clean.id, clean);
+      if (fingerprint) byFingerprint.set(fingerprint, clean);
+      added += 1;
     }
 
     if (added > 0 || updated > 0) this.save();
@@ -207,6 +260,15 @@ export class LeadStore {
     }
     if (removed > 0) this.save();
     return removed;
+  }
+
+  removeDuplicates() {
+    const result = dedupeLeads([...this.leads.values()]);
+    if (result.removed > 0) {
+      this.leads = new Map(result.leads.map((lead) => [String(lead.id), lead]));
+      this.save();
+    }
+    return { removed: result.removed, groups: result.groups };
   }
 
   update(id, patch = {}) {
@@ -252,6 +314,7 @@ export class LeadStore {
       new: total - contacted,
       contacted,
       demo,
+      duplicates: countDuplicateLeads([...this.leads.values()]),
       services,
       lastScanAt: this.lastScanAt,
       newestLeadAt: newest ? new Date(newest).toISOString() : null,

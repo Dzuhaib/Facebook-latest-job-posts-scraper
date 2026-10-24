@@ -83,6 +83,30 @@ test("skips posts already seen", () => {
   assert.equal(stats.duplicate, 1);
 });
 
+test("removes duplicate reposts from the same author in one scan", () => {
+  const text = "We need a web developer to build a WordPress site for our business.";
+  const posts = [
+    makePost({ id: "repost-a", minutesAgo: 3, text }),
+    makePost({ id: "repost-b", minutesAgo: 2, text })
+  ];
+
+  const { leads, stats } = filterPosts(posts, { config, now: NOW });
+
+  assert.deepEqual(leads.map((lead) => lead.id), ["repost-a"]);
+  assert.equal(stats.duplicate, 1);
+});
+
+test("keeps the same text from different authors", () => {
+  const text = "We need a web developer to build a WordPress site for our business.";
+  const first = makePost({ id: "author-a", minutesAgo: 3, text });
+  const second = makePost({ id: "author-b", minutesAgo: 2, text });
+  second.author = "Another Tester";
+
+  const { leads } = filterPosts([first, second], { config, now: NOW });
+
+  assert.deepEqual(leads.map((lead) => lead.id).sort(), ["author-a", "author-b"]);
+});
+
 test("sorts leads by score then recency", () => {
   const posts = [
     makePost({ id: "low", minutesAgo: 1 }),

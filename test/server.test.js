@@ -195,6 +195,59 @@ test("removes demo leads without touching real leads", async () => {
   assert.deepEqual(leads.data.items.map((item) => item.id), [realId]);
 });
 
+test("removes duplicate leads through the API", async () => {
+  const text = "We need a web developer to build a WordPress site for our business.";
+  const nowIso = new Date().toISOString();
+  const duplicate = {
+    postedAt: nowIso,
+    postedAtMs: Date.now(),
+    score: 6,
+    services: ["web"],
+    author: "Duplicate Author",
+    authorUrl: "https://www.facebook.com/duplicate-author",
+    authorPic: "",
+    sourceName: "Duplicate group",
+    sourceUrl: "https://www.facebook.com/groups/duplicate",
+    sourceKind: "groups",
+    text,
+    engagement: { likes: 1, comments: 1, shares: 0, views: 0 },
+    contacted: false,
+    contactedAt: null,
+    demo: false,
+    firstSeenAt: nowIso,
+    lastSeenAt: nowIso
+  };
+
+  store.leads.set("dup-a", {
+    ...duplicate,
+    id: "dup-a",
+    postUrl: "https://www.facebook.com/groups/duplicate/permalink/dup-a"
+  });
+  store.leads.set("dup-b", {
+    ...duplicate,
+    id: "dup-b",
+    score: 9,
+    contacted: true,
+    contactedAt: nowIso,
+    postUrl: "https://www.facebook.com/groups/duplicate/permalink/dup-b"
+  });
+
+  const before = await getJson("/api/stats");
+  assert.equal(before.data.duplicates, 1);
+
+  const removed = await getJson("/api/leads/duplicates", { method: "DELETE" });
+  assert.equal(removed.response.status, 200);
+  assert.deepEqual(removed.data, { removed: 1, groups: 1 });
+
+  const leads = await getJson("/api/leads?pageSize=100");
+  const matching = leads.data.items.filter((item) => item.text === text);
+  assert.equal(matching.length, 1);
+  assert.equal(matching[0].contacted, true);
+
+  const after = await getJson("/api/stats");
+  assert.equal(after.data.duplicates, 0);
+});
+
 test("reads and saves settings", async () => {
   const current = await getJson("/api/settings");
   assert.equal(current.response.status, 200);

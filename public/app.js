@@ -28,6 +28,7 @@ const nodes = {
   scanWindowValue: $("#scanWindowValue"),
   scanWindowUnit: $("#scanWindowUnit"),
   removeDemoBtn: $("#removeDemoBtn"),
+  removeDuplicatesBtn: $("#removeDuplicatesBtn"),
   settingsBtn: $("#settingsBtn"),
   lastScan: $("#lastScan"),
   statTotal: $("#statTotal"),
@@ -178,6 +179,7 @@ function setScanning(value) {
   state.scanning = value;
   nodes.scanBtn.disabled = value;
   nodes.emptyDemo.disabled = value;
+  nodes.removeDuplicatesBtn.disabled = value;
   nodes.scanSpinner.classList.toggle("hidden", !value);
   nodes.scanBtnText.textContent = value ? "Scanning..." : "Scan now";
 }
@@ -447,6 +449,13 @@ async function loadStats() {
     nodes.removeDemoBtn.textContent = demoCount ? `Remove demo (${demoCount})` : "Remove demo";
     nodes.removeDemoBtn.classList.toggle("hidden", demoCount === 0);
 
+    const duplicateCount = Number(data.duplicates) || 0;
+    nodes.removeDuplicatesBtn.dataset.count = String(duplicateCount);
+    nodes.removeDuplicatesBtn.textContent = duplicateCount
+      ? `Remove duplicates (${duplicateCount})`
+      : "Remove duplicates";
+    nodes.removeDuplicatesBtn.classList.toggle("hidden", duplicateCount === 0);
+
     const services = data.services ?? {};
     state.serviceCounts = services;
     state.skills = Array.isArray(data.skills) ? data.skills : [];
@@ -662,6 +671,33 @@ async function removeDemo() {
     await loadStats();
   } finally {
     nodes.removeDemoBtn.disabled = false;
+  }
+}
+
+async function removeDuplicates() {
+  const count = Number(nodes.removeDuplicatesBtn.dataset.count) || 0;
+  if (count === 0) return;
+  const ok = window.confirm(
+    `Remove ${count} duplicate lead${count === 1 ? "" : "s"}? One copy of each repost will be kept.`
+  );
+  if (!ok) return;
+
+  nodes.removeDuplicatesBtn.disabled = true;
+  nodes.removeDuplicatesBtn.textContent = "Removing...";
+
+  try {
+    const data = await api("/api/leads/duplicates", { method: "DELETE" });
+    toast(
+      `Removed ${data.removed} duplicate lead${data.removed === 1 ? "" : "s"}`,
+      "success"
+    );
+    state.page = 1;
+    await Promise.allSettled([loadStats(), loadLeads()]);
+  } catch (error) {
+    toast(error.message, "error");
+    await loadStats();
+  } finally {
+    nodes.removeDuplicatesBtn.disabled = false;
   }
 }
 
@@ -890,6 +926,7 @@ function bindEvents() {
     persistWindow();
   });
   nodes.removeDemoBtn.addEventListener("click", removeDemo);
+  nodes.removeDuplicatesBtn.addEventListener("click", removeDuplicates);
 
   nodes.settingsBtn.addEventListener("click", openSettings);
   nodes.closeSettings.addEventListener("click", () => nodes.settingsDialog.close());

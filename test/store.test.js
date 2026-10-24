@@ -182,6 +182,48 @@ test("removes only demo leads", () => {
   assert.equal(store.stats().demo, 0);
 });
 
+test("merges duplicate reposts while preserving contact state", () => {
+  const store = new LeadStore(file);
+  const text = "We need a web developer to build a WordPress site for our business.";
+
+  store.upsertMany([lead("first", { author: "Same Author", text, demo: true })]);
+  store.update("first", { contacted: true });
+
+  const result = store.upsertMany([
+    lead("second", { author: "Same Author", text, score: 9 })
+  ]);
+
+  assert.deepEqual(result, { added: 0, updated: 1 });
+  assert.equal(store.stats().total, 1);
+  const merged = store.get("first");
+  assert.equal(merged.contacted, true);
+  assert.equal(merged.demo, false);
+  assert.equal(merged.score, 9);
+});
+
+test("removes existing duplicate leads and keeps one copy", () => {
+  const text = "We need a web developer to build a WordPress site for our business.";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      leads: [
+        lead("keep", { author: "Same Author", text, score: 5 }),
+        lead("drop", { author: "Same Author", text, score: 9, demo: true, contacted: true })
+      ]
+    })
+  );
+
+  const store = new LeadStore(file);
+  assert.equal(store.stats().duplicates, 1);
+
+  assert.deepEqual(store.removeDuplicates(), { removed: 1, groups: 1 });
+  assert.equal(store.stats().total, 1);
+  assert.equal(store.stats().duplicates, 0);
+  assert.equal(store.get("drop"), null);
+  assert.equal(store.get("keep").contacted, true);
+});
+
 test("marks legacy fixture ids as demo on load", () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({ leads: [lead("1001")] }));

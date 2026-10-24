@@ -1,4 +1,5 @@
 import { scorePost } from "./intent.js";
+import { duplicateFingerprint } from "./duplicates.js";
 
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 
@@ -29,6 +30,7 @@ export function filterPosts(
 
   const leads = [];
   const freshIds = [];
+  const fingerprints = new Set();
 
   for (const post of posts) {
     stats.examined += 1;
@@ -65,6 +67,13 @@ export function filterPosts(
       stats.irrelevant += 1;
       continue;
     }
+
+    const fingerprint = duplicateFingerprint(post);
+    if (fingerprint && fingerprints.has(fingerprint)) {
+      stats.duplicate += 1;
+      continue;
+    }
+    if (fingerprint) fingerprints.add(fingerprint);
 
     leads.push({
       id: post.id,
