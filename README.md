@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white" alt="Node.js 20.12+" />
   <img src="https://img.shields.io/badge/Apify-official%20actors-00A67E" alt="Apify official actors" />
-  <img src="https://img.shields.io/badge/tests-75%20passing-brightgreen" alt="75 tests passing" />
+  <img src="https://img.shields.io/badge/tests-88%20passing-brightgreen" alt="88 tests passing" />
   <img src="https://img.shields.io/badge/dashboard-local-blue" alt="Local dashboard" />
 </p>
 
@@ -36,14 +36,20 @@ It is built for freelancers and agencies who want to answer real requests quickl
 
 - **Recency guard** — the time window is enforced by Apify and again locally, so old posts cannot slip through.
 - **Intent scoring** — every post is scored from service matches, need/hiring phrases, and intent phrases; negative and noise terms subtract points.
-- **Strict buyer-only gate** — rejects freelancer ads, service offers, availability pitches, and "DM me" sales posts.
-- **Custom services and skills** — add your own keywords from the dashboard Settings or `config.json`.
+- **Strict buyer-only gate** — rejects freelancer ads, service offers, availability pitches, learning/advice questions, and "DM me" sales posts.
+- **Explainable leads** — every saved lead keeps the matched keywords and score breakdown behind "Why this lead?".
+- **Re-validation** — saved leads are re-scored on startup and after every scan, so stale/no-longer-matching rows are dropped automatically.
+- **Custom services and skills** — add your own keywords from the dashboard Settings or `config.json`; common word forms (design/designer, edit/editor) are matched automatically.
 - **Multi-select service filter** — choose as many services as you want; results match any selected service.
-- **Duplicate cleanup** — reposts with the same author and text are merged into one lead; existing duplicates can be removed from the sidebar.
+- **Not relevant** — remove a lead and optionally block its post, author, or source from future scans.
+- **Duplicate cleanup** — exact and near-duplicate reposts with the same author are merged into one lead; existing duplicates can be removed from the sidebar.
 - **Contact tracking** — mark leads as contacted; the state survives rescans.
 - **Demo mode** — load sample leads without spending Apify credits.
 - **Demo-only cleanup** — remove sample leads without touching real Facebook leads.
 - **Source issue reporting** — see which public group or page could not be read and why.
+- **Per-source controls** — disable individual sources and set per-source result limits.
+- **Notifications** — optional Telegram, Discord, or generic webhook alerts when new leads arrive.
+- **Retention** — optionally prune leads older than a configurable number of hours.
 - **Background scans** — the dashboard polls scan status, so you can leave it open.
 - **Cost estimate** — see a worst-case Apify cost before a real run.
 - **CLI and dashboard** — run one scan, watch on an interval, or use the local UI.
@@ -151,12 +157,14 @@ The dashboard is designed for fast triage:
 - **Filters sidebar** — contact status, recency, search, multi-select services, sort order, and page size.
 - **Leads table** — post text, author, source, services, posted time, engagement, and contact action.
 - **Mark** — flags a lead as contacted. Click again to undo.
+- **Why this lead?** — expands the matched service, need/hiring, and intent keywords together with the score breakdown.
+- **Not relevant** — deletes the lead and, if you choose, blocks the post, author, or source from future scans.
 - **Load demo leads** — loads sample leads for testing the UI.
 - **Remove demo** — deletes only demo leads, never real ones.
 - **Remove duplicates** — appears when reposts are found; keeps one copy and preserves contact state.
 - **Clear filters** — appears when a filter is active.
 - **Fetch last** — sets the scan window in minutes or hours and saves it automatically.
-- **Settings** — edits the token, score threshold, per-source limit, sources, and services/skills.
+- **Settings** — edits the token, score threshold, per-source limit, sources, disabled sources, retention, concurrency, and services/skills.
 
 ### Service filter
 
@@ -170,9 +178,15 @@ Custom skills appear even when no lead matches them yet, so you can add a new se
 
 ### Duplicate handling
 
-A duplicate is the same author plus the same normalized post text. New scans skip reposts in the same run, and the lead store merges matching posts from later scans instead of adding another row. The kept lead preserves its contact state and merges services, score, engagement, and first/last seen timestamps. Short posts under 40 characters are left alone to avoid merging unrelated generic requests.
+A duplicate is the same author plus the same (or very similar) normalized post text. New scans skip reposts in the same run, and the lead store merges matching posts from later scans instead of adding another row. Similar-text detection uses token overlap with a conservative threshold and only compares posts by the same author. The kept lead preserves its contact state and merges services, score, engagement, and first/last seen timestamps. Very short posts are left alone to avoid merging unrelated generic requests.
 
 If older data already contains duplicates, the sidebar shows **Remove duplicates (N)**. Removing them keeps one lead per group and preserves any contacted state from the discarded copies.
+
+### Keep the list clean
+
+- **Re-validation** runs at startup and after each scan. Saved leads are scored again with the current services, skills, and gate; rows that no longer qualify are removed.
+- **Not relevant** asks whether to block the post, the author, or the whole source. Blocked authors and sources are skipped on every future scan and persist in `data/leads.json`.
+- **Retention** (`retentionHours`, default `0` = keep forever) prunes leads older than the configured age.
 
 ## Configuration
 
@@ -184,8 +198,12 @@ If older data already contains duplicates, the sidebar shows **Remove duplicates
 | `maxResultsPerSource` | `30` | Maximum posts requested from each source |
 | `minScore` | `4` | Minimum intent score for a lead |
 | `watchIntervalMinutes` | `10` | Interval for `npm run watch` |
+| `retentionHours` | `0` | Delete leads older than this many hours (`0` keeps them) |
 | `sources.groups` | `[]` | Public Facebook group URLs |
 | `sources.pages` | `[]` | Public Facebook page URLs |
+| `sources.disabled` | `[]` | Source URLs to skip without deleting them |
+| `sources.limits` | `{}` | Per-source result limit, e.g. `{"https://...": 50}` |
+| `sources.concurrency` | `3` | How many sources are scraped in parallel (1-10) |
 | `intent.extra.services` | `{}` | Extra keywords per built-in service |
 | `intent.extra.skills` | `[]` | Your own services/skills |
 | `intent.extra.need` | `[]` | Extra buying-signal phrases |
@@ -217,8 +235,16 @@ npm start -- --out=./output --config=./config.json
 | `FB_MAX_RESULTS_PER_SOURCE` | `30` | Override per-source limit |
 | `FB_OUTPUT_DIR` | `./output` | Override output directory |
 | `FB_WATCH_INTERVAL_MINUTES` | `10` | Override watch interval |
+| `FB_RETENTION_HOURS` | `0` | Override retention |
+| `TELEGRAM_BOT_TOKEN` | unset | Telegram bot token for new-lead alerts |
+| `TELEGRAM_CHAT_ID` | unset | Telegram chat ID for new-lead alerts |
+| `DISCORD_WEBHOOK_URL` | unset | Discord webhook for new-lead alerts |
+| `NOTIFY_WEBHOOK_URL` | unset | Generic JSON webhook for new-lead alerts |
 | `UI_HOST` | `127.0.0.1` | Dashboard host |
 | `UI_PORT` | `3000` | Dashboard port |
+| `UI_ALLOW_ANY_HOST` | `0` | Disable the loopback Host-header guard (only if you know why) |
+
+Set any combination of the notification variables; each configured channel receives the new leads after a real scan. Alerts are skipped for demo scans and when there are no new leads.
 
 ## How intent scoring works
 
@@ -285,8 +311,8 @@ The dashboard stores its own data in `data/leads.json`, separate from CLI report
 
 Apify charges per scraped post. Approximate prices:
 
-- **Groups:** about $2.60 per 1,000 posts
-- **Pages:** about $5.00 per 1,000 posts
+- **Groups:** about $2.60 per 1,000 results
+- **Pages:** about $7.00 per 1,000 pages (including the date filter)
 
 The tool prints a worst-case estimate before each real run. Because the actor only returns posts inside your window, real costs are usually much lower. `npm run dry-run` is free.
 
@@ -341,6 +367,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 │   ├── filter.js            Recency, intent, and dedupe pipeline
 │   ├── duplicates.js        Repost fingerprinting and duplicate cleanup
 │   ├── state.js             Seen-post store
+│   ├── notify.js            Telegram, Discord, and webhook alerts
 │   ├── report.js            JSON, CSV, Markdown output
 │   └── fixtures/            Sample posts for dry runs
 ├── test/                    Unit and API tests
@@ -352,7 +379,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 ## Privacy and limitations
 
 - Only public groups and pages are supported. Personal profiles and private groups are not.
-- The dashboard binds to `127.0.0.1` by default. There is no authentication; do not expose it to the internet without adding auth.
+- The dashboard binds to `127.0.0.1` by default and rejects non-loopback `Host` headers. There is no authentication; do not expose it to the internet without adding auth.
 - `.env`, `config.json`, `data/`, `output/`, and `.state/` are ignored by Git because they can contain secrets, personal data, or runtime state.
 - The tool collects publicly visible posts for outreach research. Follow Facebook's terms and applicable privacy laws when storing or contacting people.
 
@@ -362,7 +389,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 npm test
 ```
 
-The test suite covers configuration, Apify input, normalization, intent scoring, duplicate detection and removal, lead storage, settings, demo removal, and dashboard API behavior.
+The test suite covers configuration, Apify input, normalization, intent scoring, duplicate detection and removal, lead storage and re-validation, blocking, settings, demo removal, notifications, and dashboard API behavior.
 
 ## Contributing
 

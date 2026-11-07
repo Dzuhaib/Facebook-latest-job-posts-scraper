@@ -6,7 +6,11 @@ function stamp(date = new Date()) {
 }
 
 function csvCell(value) {
-  const text = String(value ?? "");
+  let text = String(value ?? "");
+  const isNumber = /^-?\d+(?:\.\d+)?$/.test(text);
+  if (!isNumber && /^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
   if (/[",\r\n]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }

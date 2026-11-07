@@ -4,6 +4,7 @@ import { LeadStore } from "./store.js";
 import { getSettings, saveSettings, testToken } from "./settings.js";
 import { loadConfig, loadToken, assertSources } from "../src/config.js";
 import { collectLeads } from "../src/run.js";
+import { notifyNewLeads } from "../src/notify.js";
 
 function publicScanState(scan) {
   return {
@@ -25,8 +26,34 @@ export function createApp({
   logger = console
 } = {}) {
   const app = express();
-  const leadStore = store ?? new LeadStore(path.join(cwd, "data", "leads.json"));
+  let startupConfig = null;
+  try {
+    startupConfig = loadConfig({ cwd });
+  } catch {
+    startupConfig = null;
+  }
+  const leadStore =
+    store ??
+    new LeadStore(path.join(cwd, "data", "leads.json"), {
+      retentionHours: startupConfig?.retentionHours ?? 0
+    });
   const uiDir = publicDir ?? path.join(cwd, "public");
+
+  if (startupConfig) {
+    try {
+      const result = leadStore.revalidate({
+        config: startupConfig,
+        log: (message) => logger.log?.(`[store] ${message}`)
+      });
+      if (result.removed || result.updated) {
+        logger.log?.(
+          `[store] Re-validated saved leads: ${result.removed} removed, ${result.updated} updated`
+        );
+      }
+    } catch {
+      /* keep the dashboard usable if re-validation fails */
+    }
+  }
 
   const scan = {
     running: false,
@@ -76,16 +103,33 @@ export function createApp({
           log: pushLog
         });
 
+        const existingIds = new Set([...leadStore.leads.keys()].map(String));
         const merge = leadStore.upsertMany(leads);
         leadStore.setLastScanAt(new Date().toISOString());
+
+        let revalidation = { removed: 0, updated: 0 };
+        try {
+          revalidation = leadStore.revalidate({ config, log: pushLog });
+        } catch {
+          /* re-validation is best-effort */
+        }
 
         scan.result = {
           ...stats,
           leads: leads.length,
           added: merge.added,
           updated: merge.updated,
+          revalidation,
           demo
         };
+
+        if (!demo) {
+          const newLeads = leads.filter(
+            (lead) =>
+              !existingIds.has(String(lead.id)) && Boolean(leadStore.get(lead.id))
+          );
+          notifyNewLeads(newLeads, { config, log: pushLog }).catch(() => {});
+        }
         const sourceErrors = stats.sourceErrors ?? 0;
         pushLog(
           `Done: ${merge.added} new, ${merge.updated} updated, ${sourceErrors} source error(s).`
@@ -109,6 +153,20 @@ export function createApp({
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "1mb" }));
+  app.use((req, res, next) => {
+    const uiHost = (process.env.UI_HOST ?? "127.0.0.1").toLowerCase();
+    const loopback = uiHost === "127.0.0.1" || uiHost === "localhost" || uiHost === "::1";
+    if (!loopback || process.env.UI_ALLOW_ANY_HOST === "1") return next();
+
+    const host = String(req.headers.host ?? "")
+      .toLowerCase()
+      .replace(/:\d+$/, "");
+    const allowed = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+    if (!allowed.has(host)) {
+      return res.status(403).json({ error: "Forbidden host" });
+    }
+    return next();
+  });
   app.use((req, res, next) => {
     res.set({
       "X-Content-Type-Options": "nosniff",
@@ -135,6 +193,16 @@ export function createApp({
 
   app.delete("/api/leads/duplicates", (req, res) => {
     res.json(leadStore.removeDuplicates());
+  });
+
+  app.delete("/api/leads/:id", (req, res) => {
+    const block = String(req.query.block ?? req.body?.block ?? "").toLowerCase();
+    if (!["", "post", "author", "source"].includes(block)) {
+      return res.status(400).json({ error: "block must be post, author, or source" });
+    }
+    const result = leadStore.remove(req.params.id, { block });
+    if (!result) return res.status(404).json({ error: "Lead not found" });
+    return res.json(result);
   });
 
   app.patch("/api/leads/:id", (req, res) => {

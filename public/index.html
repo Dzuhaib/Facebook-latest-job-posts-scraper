@@ -117,6 +117,7 @@
               <button id="emptyDemo" class="btn ghost" type="button">Load demo leads</button>
               <button id="emptyClear" class="btn ghost hidden" type="button">Clear filters</button>
             </div>
+            <div id="sourceSummary" class="source-summary hidden"></div>
           </section>
         </aside>
 
@@ -203,6 +204,19 @@
             </label>
           </div>
 
+          <div class="grid-2">
+            <label class="field">
+              <span>Keep leads for (hours)</span>
+              <input id="retentionInput" type="number" min="0" max="8760" />
+              <small>0 keeps leads forever.</small>
+            </label>
+            <label class="field">
+              <span>Sources in parallel</span>
+              <input id="concurrencyInput" type="number" min="1" max="10" />
+              <small>How many sources are scraped at once.</small>
+            </label>
+          </div>
+
           <label class="field">
             <span>Public group URLs (one per line)</span>
             <textarea id="groupsInput" rows="5" spellcheck="false"></textarea>
@@ -211,6 +225,15 @@
           <label class="field">
             <span>Page URLs (one per line)</span>
             <textarea id="pagesInput" rows="4" spellcheck="false"></textarea>
+          </label>
+
+          <label class="field">
+            <span>Disabled sources (one per line)</span>
+            <textarea id="disabledSourcesInput" rows="3" spellcheck="false"></textarea>
+            <small>
+              Sources listed here are skipped without being deleted. Remove a line to enable the
+              source again.
+            </small>
           </label>
 
           <label class="field">

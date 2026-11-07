@@ -3,9 +3,13 @@
   "maxResultsPerSource": 30,
   "minScore": 4,
   "watchIntervalMinutes": 10,
+  "retentionHours": 0,
   "sources": {
     "groups": [],
-    "pages": []
+    "pages": [],
+    "disabled": [],
+    "limits": {},
+    "concurrency": 3
   },
   "intent": {
     "extra": {

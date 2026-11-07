@@ -6,9 +6,13 @@ export const DEFAULTS = {
   maxResultsPerSource: 30,
   minScore: 4,
   watchIntervalMinutes: 10,
+  retentionHours: 0,
   sources: {
     groups: [],
-    pages: []
+    pages: [],
+    disabled: [],
+    limits: {},
+    concurrency: 3
   },
   intent: {
     extra: {}
@@ -57,6 +61,25 @@ function normalizeUrls(values, name) {
   return [...new Set(urls)];
 }
 
+function normalizeLimits(value, fallback) {
+  if (value === undefined || value === null) return { ...fallback };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("sources.limits must be an object mapping a source URL to a number");
+  }
+  const limits = {};
+  for (const [url, raw] of Object.entries(value)) {
+    if (!/^https?:\/\//i.test(url)) {
+      throw new Error(`sources.limits has an invalid URL key: "${url}"`);
+    }
+    const limit = toPositiveInt(raw, `sources.limits["${url}"]`, {
+      min: 1,
+      max: 1000
+    });
+    limits[url] = limit;
+  }
+  return limits;
+}
+
 function deepMerge(base, override) {
   if (Array.isArray(base) || Array.isArray(override)) {
     return override === undefined ? base : override;
@@ -96,6 +119,7 @@ export function loadConfig({ cwd = process.cwd(), argv = {} } = {}) {
   if (env.FB_WATCH_INTERVAL_MINUTES) {
     config.watchIntervalMinutes = env.FB_WATCH_INTERVAL_MINUTES;
   }
+  if (env.FB_RETENTION_HOURS) config.retentionHours = env.FB_RETENTION_HOURS;
 
   if (argv.window !== undefined) config.windowMinutes = argv.window;
   if (argv.minScore !== undefined) config.minScore = argv.minScore;
@@ -124,9 +148,25 @@ export function loadConfig({ cwd = process.cwd(), argv = {} } = {}) {
   }
   config.minScore = minScore;
 
+  const retentionHours = Number(config.retentionHours ?? 0);
+  if (!Number.isInteger(retentionHours) || retentionHours < 0 || retentionHours > 8760) {
+    throw new Error(
+      `retentionHours must be a whole number between 0 and 8760 (got "${config.retentionHours}")`
+    );
+  }
+  config.retentionHours = retentionHours;
+
+  const concurrency = Number(config.sources?.concurrency ?? 3);
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 10) {
+    throw new Error(`sources.concurrency must be a whole number between 1 and 10 (got "${config.sources?.concurrency}")`);
+  }
+
   config.sources = {
     groups: normalizeUrls(config.sources?.groups, "sources.groups"),
-    pages: normalizeUrls(config.sources?.pages, "sources.pages")
+    pages: normalizeUrls(config.sources?.pages, "sources.pages"),
+    disabled: normalizeUrls(config.sources?.disabled, "sources.disabled"),
+    limits: normalizeLimits(config.sources?.limits, {}),
+    concurrency
   };
 
   config.intent = config.intent ?? { extra: {} };

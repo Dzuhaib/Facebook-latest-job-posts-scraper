@@ -14,22 +14,35 @@ function firstText(...values) {
   return "";
 }
 
+function fromNumeric(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw > 1e12 ? raw : raw * 1000;
+}
+
+function fromText(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function toMs(item) {
-  const raw = Number(item.timestamp);
-  if (Number.isFinite(raw) && raw > 0) {
-    return raw > 1e12 ? raw : raw * 1000;
+  const candidates = [
+    item.timestamp,
+    item.time,
+    item.date,
+    item.creation_time,
+    item.created_time,
+    item.createdAt
+  ];
+
+  for (const value of candidates) {
+    const numeric = fromNumeric(value);
+    if (numeric !== null) return numeric;
+    const parsed = fromText(value);
+    if (parsed !== null) return parsed;
   }
-  if (typeof item.time === "number" && Number.isFinite(item.time) && item.time > 0) {
-    return item.time > 1e12 ? item.time : item.time * 1000;
-  }
-  if (typeof item.time === "string") {
-    const ms = Date.parse(item.time);
-    if (Number.isFinite(ms)) return ms;
-  }
-  if (typeof item.date === "string") {
-    const ms = Date.parse(item.date);
-    if (Number.isFinite(ms)) return ms;
-  }
+
   if (item.sharedPost) {
     return toMs(item.sharedPost);
   }

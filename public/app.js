@@ -69,8 +69,12 @@ const nodes = {
   tokenHint: $("#tokenHint"),
   minScoreInput: $("#minScoreInput"),
   limitInput: $("#limitInput"),
+  retentionInput: $("#retentionInput"),
+  concurrencyInput: $("#concurrencyInput"),
   groupsInput: $("#groupsInput"),
   pagesInput: $("#pagesInput"),
+  disabledSourcesInput: $("#disabledSourcesInput"),
+  sourceSummary: $("#sourceSummary"),
   skillsInput: $("#skillsInput"),
   testTokenBtn: $("#testTokenBtn"),
   saveSettingsBtn: $("#saveSettingsBtn"),
@@ -218,6 +222,94 @@ function serviceClass(service) {
   return ["automation", "web", "seo"].includes(service) ? `pill ${service}` : "pill custom";
 }
 
+function renderWhy(lead) {
+  const matched = lead.matched;
+  const breakdown = lead.breakdown;
+  if (!matched && !breakdown) return null;
+
+  const details = el("details", "why");
+  details.append(el("summary", null, "Why this lead?"));
+  const body = el("div", "why-body");
+  const rows = [];
+
+  if (matched) {
+    for (const [category, hits] of Object.entries(matched.services ?? {})) {
+      if (Array.isArray(hits) && hits.length) {
+        rows.push(["Service", `${category}: ${hits.join(", ")}`]);
+      }
+    }
+    if (matched.skills?.length) rows.push(["Skills", matched.skills.join(", ")]);
+    if (matched.need?.length) rows.push(["Need", matched.need.join(", ")]);
+    if (matched.hiring?.length) rows.push(["Hiring", matched.hiring.join(", ")]);
+    if (matched.intentPhrases?.length) {
+      rows.push(["Intent", matched.intentPhrases.join(", ")]);
+    }
+    if (matched.negative?.length) rows.push(["Negative", matched.negative.join(", ")]);
+    if (matched.noise?.length) rows.push(["Noise", matched.noise.join(", ")]);
+  }
+
+  for (const [label, value] of rows) {
+    const item = el("div", "why-item");
+    item.append(el("strong", null, label), el("span", null, value));
+    body.append(item);
+  }
+
+  if (breakdown) {
+    const parts = [
+      ["service", breakdown.servicePoints],
+      ["skills", breakdown.skillPoints],
+      ["need", breakdown.needPoints],
+      ["hiring", breakdown.hiringPoints],
+      ["intent", breakdown.phrasePoints],
+      ["negative", -breakdown.negativePoints],
+      ["noise", -breakdown.noisePoints]
+    ].filter(([, points]) => Number(points) !== 0);
+
+    const scoreLine = el("div", "why-score");
+    const detail = parts
+      .map(([label, points]) => `${label} ${points > 0 ? "+" : ""}${points}`)
+      .join(", ");
+    scoreLine.textContent = `Score ${lead.score}${detail ? ` = ${detail}` : ""}`;
+    body.append(scoreLine);
+  }
+
+  if (!body.childElementCount) return null;
+  details.append(body);
+  return details;
+}
+
+async function removeLead(lead, row) {
+  const preview = String(lead.text ?? "").replace(/\s+/g, " ").slice(0, 140);
+  if (!window.confirm(`Remove this lead?\n\n${preview}`)) return;
+
+  let block = "";
+  if (lead.author && window.confirm(`Also block "${lead.author}" from future scans?`)) {
+    block = "author";
+  } else if (
+    lead.sourceName &&
+    window.confirm(`Block the source "${lead.sourceName}" from future scans?`)
+  ) {
+    block = "source";
+  }
+
+  try {
+    const data = await api(
+      `/api/leads/${encodeURIComponent(lead.id)}?block=${encodeURIComponent(block)}`,
+      { method: "DELETE" }
+    );
+    row.remove();
+    toast(
+      data.blocked
+        ? `Removed and blocked ${data.blocked === "author" ? "author" : "source"}`
+        : "Lead removed",
+      "success"
+    );
+    await Promise.allSettled([loadStats(), loadLeads()]);
+  } catch (error) {
+    toast(error.message, "error");
+  }
+}
+
 function renderRow(lead) {
   const row = el("tr");
   row.dataset.id = lead.id;
@@ -252,6 +344,8 @@ function renderRow(lead) {
   const snippet = el("p", "snippet", lead.text || "(no text)");
   snippet.title = lead.text || "";
 
+  const why = renderWhy(lead);
+
   const links = el("div", "lead-links");
   const open = el("a", "post-link", "Open post");
   open.href = safeUrl(lead.postUrl);
@@ -267,7 +361,14 @@ function renderRow(lead) {
     links.append(profile);
   }
 
-  leadCell.append(top, snippet, links);
+  const remove = el("button", "link-btn danger-link", "Not relevant");
+  remove.type = "button";
+  remove.addEventListener("click", () => removeLead(lead, row));
+  links.append(remove);
+
+  leadCell.append(top, snippet);
+  if (why) leadCell.append(why);
+  leadCell.append(links);
 
   const servicesCell = el("td", "col-services");
   const services = el("div", "services");
@@ -437,6 +538,44 @@ async function loadLeads() {
   }
 }
 
+function renderSourceSummary(data) {
+  const sources = data.sources ?? {};
+  const blocked = data.blocked ?? {};
+  const rows = Object.entries(sources)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+  const blockedPosts = Number(blocked.posts) || 0;
+  const blockedAuthors = Number(blocked.authors) || 0;
+  const blockedSources = Number(blocked.sources) || 0;
+
+  nodes.sourceSummary.replaceChildren();
+  if (rows.length === 0 && blockedPosts + blockedAuthors + blockedSources === 0) {
+    nodes.sourceSummary.classList.add("hidden");
+    return;
+  }
+
+  nodes.sourceSummary.append(el("div", "source-summary-title", "Sources"));
+  for (const [name, count] of rows) {
+    const item = el("div", "source-summary-row");
+    const label = el("span", null, name);
+    label.title = name;
+    item.append(label, el("b", null, String(count)));
+    nodes.sourceSummary.append(item);
+  }
+
+  if (blockedPosts + blockedAuthors + blockedSources > 0) {
+    nodes.sourceSummary.append(
+      el(
+        "div",
+        "source-summary-row muted",
+        `Blocked: ${blockedAuthors} authors, ${blockedSources} sources, ${blockedPosts} posts`
+      )
+    );
+  }
+
+  nodes.sourceSummary.classList.remove("hidden");
+}
+
 async function loadStats() {
   try {
     const data = await api("/api/stats");
@@ -460,6 +599,7 @@ async function loadStats() {
     state.serviceCounts = services;
     state.skills = Array.isArray(data.skills) ? data.skills : [];
     syncServiceFilter(state.skills, services);
+    renderSourceSummary(data);
     renderSourceIssues(data.scan);
 
     if (data.lastScanAt) {
@@ -744,9 +884,11 @@ function handleScanStatus(status, { announce = false } = {}) {
         toast(status.error, "error");
       } else if (status.result) {
         const sourceErrors = status.result.sourceErrors ?? 0;
+        const stale = status.result.revalidation?.removed ?? 0;
+        const staleNote = stale > 0 ? ` ${stale} stale removed.` : "";
         const message = sourceErrors
-          ? `Scan finished: ${status.result.added} new, ${status.result.updated} updated. ${sourceErrors} source(s) returned no posts (private or unavailable).`
-          : `Scan complete: ${status.result.added} new, ${status.result.updated} updated`;
+          ? `Scan finished: ${status.result.added} new, ${status.result.updated} updated.${staleNote} ${sourceErrors} source(s) returned no posts (private or unavailable).`
+          : `Scan complete: ${status.result.added} new, ${status.result.updated} updated.${staleNote}`;
         toast(message, sourceErrors ? "error" : "success");
       }
       loadStats();
@@ -824,8 +966,11 @@ async function openSettings() {
 
     nodes.minScoreInput.value = String(settings.minScore);
     nodes.limitInput.value = String(settings.maxResultsPerSource);
+    nodes.retentionInput.value = String(settings.retentionHours ?? 0);
+    nodes.concurrencyInput.value = String(settings.concurrency ?? 3);
     nodes.groupsInput.value = settings.groups.join("\n");
     nodes.pagesInput.value = settings.pages.join("\n");
+    nodes.disabledSourcesInput.value = (settings.disabledSources ?? []).join("\n");
     nodes.skillsInput.value = (settings.skills ?? []).join("\n");
 
     nodes.tokenInput.value = "";
@@ -849,8 +994,11 @@ async function saveSettings(event) {
   const payload = {
     minScore: Number(nodes.minScoreInput.value),
     maxResultsPerSource: Number(nodes.limitInput.value),
+    retentionHours: Number(nodes.retentionInput.value),
+    concurrency: Number(nodes.concurrencyInput.value),
     groups: splitLines(nodes.groupsInput.value),
     pages: splitLines(nodes.pagesInput.value),
+    disabledSources: splitLines(nodes.disabledSourcesInput.value),
     skills: splitLines(nodes.skillsInput.value)
   };
 

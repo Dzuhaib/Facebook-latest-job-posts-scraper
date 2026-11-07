@@ -1,6 +1,9 @@
 import { normalizeText } from "./intent.js";
 
-const MIN_FINGERPRINT_TEXT = 40;
+const MIN_FINGERPRINT_TEXT = 20;
+const MIN_SIMILARITY_TEXT = 40;
+const SIMILARITY_THRESHOLD = 0.82;
+const MAX_COMPARE = 400;
 
 function normalizeAuthor(value) {
   return String(value ?? "")
@@ -17,6 +20,58 @@ export function duplicateFingerprint(lead = {}) {
   const text = normalizeText(lead.text);
   if (text.length < MIN_FINGERPRINT_TEXT) return null;
   return `${normalizeAuthor(lead.author)}\u0000${text}`;
+}
+
+function shingles(text) {
+  const tokens = normalizeText(text)
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length > 1);
+  if (tokens.length === 0) return new Set();
+  if (tokens.length === 1) return new Set(tokens);
+  const out = new Set();
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    out.add(`${tokens[index]} ${tokens[index + 1]}`);
+  }
+  return out;
+}
+
+function jaccard(left, right) {
+  if (left.size === 0 || right.size === 0) return 0;
+  let intersection = 0;
+  const [small, large] = left.size <= right.size ? [left, right] : [right, left];
+  for (const value of small) {
+    if (large.has(value)) intersection += 1;
+  }
+  const union = left.size + right.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+export function isNearDuplicate(left, right) {
+  if (!left || !right) return false;
+  if (String(left.id) === String(right.id)) return true;
+  if (normalizeAuthor(left.author) !== normalizeAuthor(right.author)) return false;
+
+  const leftText = normalizeText(left.text);
+  const rightText = normalizeText(right.text);
+  if (
+    leftText.length < MIN_SIMILARITY_TEXT ||
+    rightText.length < MIN_SIMILARITY_TEXT
+  ) {
+    return false;
+  }
+  if (leftText === rightText) return true;
+  return jaccard(shingles(leftText), shingles(rightText)) >= SIMILARITY_THRESHOLD;
+}
+
+export function findNearDuplicate(candidates, lead) {
+  let checked = 0;
+  for (const candidate of candidates) {
+    if (checked >= MAX_COMPARE) break;
+    if (normalizeAuthor(candidate.author) !== normalizeAuthor(lead.author)) continue;
+    checked += 1;
+    if (isNearDuplicate(candidate, lead)) return candidate;
+  }
+  return null;
 }
 
 function rank(lead) {
@@ -88,16 +143,68 @@ export function mergeDuplicateGroup(group) {
   };
 }
 
+function mergeSimilarGroups(groups) {
+  if (groups.length < 2) return groups;
+
+  const parent = groups.map((_, index) => index);
+  const find = (index) => {
+    let root = index;
+    while (parent[root] !== root) root = parent[root];
+    let cursor = index;
+    while (parent[cursor] !== cursor) {
+      const next = parent[cursor];
+      parent[cursor] = root;
+      cursor = next;
+    }
+    return root;
+  };
+  const union = (left, right) => {
+    const a = find(left);
+    const b = find(right);
+    if (a !== b) parent[b] = a;
+  };
+
+  const byAuthor = new Map();
+  groups.forEach((group, index) => {
+    const author = normalizeAuthor(group[0]?.author);
+    const bucket = byAuthor.get(author);
+    if (bucket) bucket.push(index);
+    else byAuthor.set(author, [index]);
+  });
+
+  for (const bucket of byAuthor.values()) {
+    if (bucket.length < 2) continue;
+    for (let i = 0; i < bucket.length; i += 1) {
+      for (let j = i + 1; j < bucket.length; j += 1) {
+        if (isNearDuplicate(groups[bucket[i]][0], groups[bucket[j]][0])) {
+          union(bucket[i], bucket[j]);
+        }
+      }
+    }
+  }
+
+  const merged = new Map();
+  groups.forEach((group, index) => {
+    const root = find(index);
+    const existing = merged.get(root);
+    if (existing) existing.push(...group);
+    else merged.set(root, [...group]);
+  });
+  return [...merged.values()];
+}
+
 export function duplicateGroups(leads = []) {
-  const groups = new Map();
+  const exact = new Map();
   for (const lead of leads) {
     const key = duplicateFingerprint(lead);
     if (!key) continue;
-    const group = groups.get(key);
+    const group = exact.get(key);
     if (group) group.push(lead);
-    else groups.set(key, [lead]);
+    else exact.set(key, [lead]);
   }
-  return [...groups.values()].filter((group) => group.length > 1);
+
+  const groups = mergeSimilarGroups([...exact.values()]);
+  return groups.filter((group) => group.length > 1);
 }
 
 export function countDuplicateLeads(leads = []) {

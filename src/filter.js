@@ -1,5 +1,5 @@
 import { scorePost } from "./intent.js";
-import { duplicateFingerprint } from "./duplicates.js";
+import { duplicateFingerprint, isNearDuplicate } from "./duplicates.js";
 
 const FUTURE_SKEW_MS = 5 * 60 * 1000;
 
@@ -31,6 +31,7 @@ export function filterPosts(
   const leads = [];
   const freshIds = [];
   const fingerprints = new Set();
+  const byAuthor = new Map();
 
   for (const post of posts) {
     stats.examined += 1;
@@ -73,7 +74,18 @@ export function filterPosts(
       stats.duplicate += 1;
       continue;
     }
+
+    const authorKey = String(post.author ?? "").trim().toLowerCase();
+    const authorPosts = byAuthor.get(authorKey) ?? [];
+    const nearDuplicate = authorPosts.some((existing) => isNearDuplicate(existing, post));
+    if (nearDuplicate) {
+      stats.duplicate += 1;
+      continue;
+    }
+
     if (fingerprint) fingerprints.add(fingerprint);
+    authorPosts.push(post);
+    byAuthor.set(authorKey, authorPosts);
 
     leads.push({
       id: post.id,

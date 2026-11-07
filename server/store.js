@@ -6,19 +6,27 @@ import {
   countDuplicateLeads,
   dedupeLeads,
   duplicateFingerprint,
-  mergeDuplicateGroup
+  mergeDuplicateGroup,
+  findNearDuplicate
 } from "../src/duplicates.js";
+import { scorePost } from "../src/intent.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 const MAX_LEADS = 20000;
+const MAX_BLOCKED = 5000;
 
 const STATUSES = new Set(["all", "new", "contacted"]);
 const SORTS = new Set(["newest", "oldest", "score"]);
+const BLOCK_KINDS = new Set(["", "post", "author", "source"]);
 
 function asInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeKey(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function selectedServices(params) {
@@ -50,6 +58,8 @@ function toClient(lead, now) {
     ageMinutes: ageMinutes(lead.postedAtMs, now),
     score: lead.score,
     services: lead.services,
+    matched: lead.matched ?? null,
+    breakdown: lead.breakdown ?? null,
     author: lead.author,
     authorUrl: lead.authorUrl,
     authorPic: lead.authorPic,
@@ -82,6 +92,8 @@ function cleanLead(lead, nowIso) {
     postedAtMs,
     score: Number(lead.score) || 0,
     services: Array.isArray(lead.services) ? [...new Set(lead.services.map(String))] : [],
+    matched: lead.matched && typeof lead.matched === "object" ? lead.matched : undefined,
+    breakdown: lead.breakdown && typeof lead.breakdown === "object" ? lead.breakdown : undefined,
     author: String(lead.author ?? "Unknown"),
     authorUrl: String(lead.authorUrl ?? ""),
     authorPic: String(lead.authorPic ?? ""),
@@ -119,16 +131,24 @@ function mergeDuplicateLead(existing, incoming, nowIso) {
     sourceKind: existing.sourceKind,
     postUrl: existing.postUrl,
     text: existing.text,
+    matched: merged.matched ?? existing.matched,
+    breakdown: merged.breakdown ?? existing.breakdown,
     firstSeenAt: merged.firstSeenAt ?? existing.firstSeenAt,
     lastSeenAt: nowIso
   };
+}
+
+function emptyBlocked() {
+  return { ids: new Set(), authors: new Set(), sources: new Set() };
 }
 
 export class LeadStore {
   constructor(filePath, options = {}) {
     this.filePath = filePath;
     this.maxLeads = options.maxLeads ?? MAX_LEADS;
+    this.retentionHours = options.retentionHours ?? 0;
     this.leads = new Map();
+    this.blocked = emptyBlocked();
     this.lastScanAt = null;
     this.load();
   }
@@ -148,8 +168,19 @@ export class LeadStore {
           });
         }
       }
+      const blocked = data.blocked ?? {};
+      this.blocked = {
+        ids: new Set((Array.isArray(blocked.ids) ? blocked.ids : []).map(String)),
+        authors: new Set(
+          (Array.isArray(blocked.authors) ? blocked.authors : []).map(normalizeKey)
+        ),
+        sources: new Set(
+          (Array.isArray(blocked.sources) ? blocked.sources : []).map(normalizeKey)
+        )
+      };
     } catch {
       this.leads = new Map();
+      this.blocked = emptyBlocked();
       this.lastScanAt = null;
     }
     return this;
@@ -163,6 +194,11 @@ export class LeadStore {
       version: 1,
       updatedAt: new Date().toISOString(),
       lastScanAt: this.lastScanAt,
+      blocked: {
+        ids: [...this.blocked.ids],
+        authors: [...this.blocked.authors],
+        sources: [...this.blocked.sources]
+      },
       leads: [...this.leads.values()]
     };
     const tmp = `${this.filePath}.tmp`;
@@ -170,12 +206,39 @@ export class LeadStore {
     fs.renameSync(tmp, this.filePath);
   }
 
-  prune() {
+  prune(now = Date.now()) {
+    if (this.retentionHours > 0) {
+      const cutoff = now - this.retentionHours * 60 * 60 * 1000;
+      for (const [id, lead] of this.leads) {
+        if (lead.demo) continue;
+        if (Number(lead.postedAtMs) < cutoff) this.leads.delete(id);
+      }
+    }
+
     if (this.leads.size <= this.maxLeads) return;
     const sorted = [...this.leads.values()].sort(
       (a, b) => b.postedAtMs - a.postedAtMs
     );
     this.leads = new Map(sorted.slice(0, this.maxLeads).map((lead) => [lead.id, lead]));
+  }
+
+  isBlocked(lead) {
+    if (!lead) return false;
+    if (this.blocked.ids.has(String(lead.id))) return true;
+    const author = normalizeKey(lead.author);
+    if (author && this.blocked.authors.has(author)) return true;
+    const source = normalizeKey(lead.sourceUrl || lead.sourceName);
+    if (source && this.blocked.sources.has(source)) return true;
+    return false;
+  }
+
+  trimBlocked() {
+    for (const key of ["ids", "authors", "sources"]) {
+      const set = this.blocked[key];
+      if (set.size <= MAX_BLOCKED) continue;
+      const kept = [...set].slice(-MAX_BLOCKED);
+      this.blocked[key] = new Set(kept);
+    }
   }
 
   get(id) {
@@ -187,18 +250,26 @@ export class LeadStore {
     let added = 0;
     let updated = 0;
     const byFingerprint = new Map();
+    const byAuthor = new Map();
 
     for (const lead of this.leads.values()) {
       const fingerprint = duplicateFingerprint(lead);
       if (fingerprint && !byFingerprint.has(fingerprint)) {
         byFingerprint.set(fingerprint, lead);
       }
+      const author = normalizeKey(lead.author);
+      const bucket = byAuthor.get(author);
+      if (bucket) bucket.push(lead);
+      else byAuthor.set(author, [lead]);
     }
 
     for (const lead of Array.isArray(leads) ? leads : []) {
       const clean = cleanLead(lead, nowIso);
       if (!clean) continue;
+      if (this.isBlocked(clean)) continue;
 
+      const authorKey = normalizeKey(clean.author);
+      const authorBucket = byAuthor.get(authorKey) ?? [];
       const fingerprint = duplicateFingerprint(clean);
       const existing = this.leads.get(clean.id);
       if (existing) {
@@ -209,6 +280,8 @@ export class LeadStore {
           postedAtMs: clean.postedAtMs,
           score: clean.score,
           services: clean.services,
+          matched: clean.matched ?? existing.matched,
+          breakdown: clean.breakdown ?? existing.breakdown,
           author: clean.author,
           authorUrl: clean.authorUrl,
           authorPic: clean.authorPic,
@@ -228,26 +301,105 @@ export class LeadStore {
           }
         }
         if (fingerprint) byFingerprint.set(fingerprint, updatedLead);
+        byAuthor.set(
+          authorKey,
+          [updatedLead, ...authorBucket.filter((item) => String(item.id) !== String(clean.id))]
+        );
         updated += 1;
         continue;
       }
 
-      const duplicate = fingerprint ? byFingerprint.get(fingerprint) : null;
-      if (duplicate) {
-        const merged = mergeDuplicateLead(duplicate, clean, nowIso);
+      const exact = fingerprint ? byFingerprint.get(fingerprint) : null;
+      const near = exact ?? findNearDuplicate(authorBucket, clean);
+      if (near) {
+        const merged = mergeDuplicateLead(near, clean, nowIso);
         this.leads.set(merged.id, merged);
-        byFingerprint.set(fingerprint, merged);
+        if (fingerprint) byFingerprint.set(fingerprint, merged);
+        byAuthor.set(
+          authorKey,
+          [merged, ...authorBucket.filter((item) => String(item.id) !== String(near.id))]
+        );
         updated += 1;
         continue;
       }
 
       this.leads.set(clean.id, clean);
       if (fingerprint) byFingerprint.set(fingerprint, clean);
+      authorBucket.push(clean);
+      byAuthor.set(authorKey, authorBucket);
       added += 1;
     }
 
     if (added > 0 || updated > 0) this.save();
     return { added, updated };
+  }
+
+  revalidate({ config = {}, now = Date.now(), log = () => {} } = {}) {
+    let removed = 0;
+    let updated = 0;
+    const minScore = config?.minScore ?? 4;
+    const extra = config?.intent?.extra;
+
+    for (const [id, lead] of [...this.leads]) {
+      if (lead.demo) continue;
+      const result = scorePost(lead.text, { extra, minScore });
+      if (!result.isLead) {
+        this.leads.delete(id);
+        removed += 1;
+        const reason =
+          result.matched.seller[0] ??
+          result.matched.nonBuyer[0] ??
+          (!result.trigger ? "no buying signal" : "score below threshold");
+        log(`Dropped stale lead ${id}: ${reason}`);
+        continue;
+      }
+
+      const servicesChanged =
+        JSON.stringify(result.services) !== JSON.stringify(lead.services);
+      if (result.score !== lead.score || servicesChanged || !lead.matched) {
+        this.leads.set(id, {
+          ...lead,
+          score: result.score,
+          services: result.services,
+          matched: result.matched,
+          breakdown: result.breakdown
+        });
+        updated += 1;
+      }
+    }
+
+    if (removed > 0 || updated > 0) this.save();
+    return { removed, updated };
+  }
+
+  remove(id, { block = "" } = {}) {
+    const key = String(id);
+    const existing = this.leads.get(key);
+    if (!existing) return null;
+
+    const kind = BLOCK_KINDS.has(block) ? block : "";
+    let blocked = null;
+    if (kind === "post") {
+      this.blocked.ids.add(key);
+      blocked = "post";
+    } else if (kind === "author") {
+      const author = normalizeKey(existing.author);
+      if (author && author !== "unknown") {
+        this.blocked.authors.add(author);
+        blocked = "author";
+      }
+    } else if (kind === "source") {
+      const source = normalizeKey(existing.sourceUrl || existing.sourceName);
+      if (source && source !== "unknown") {
+        this.blocked.sources.add(source);
+        blocked = "source";
+      }
+    }
+
+    this.leads.delete(key);
+    this.trimBlocked();
+    this.save();
+    return { removed: key, blocked };
   }
 
   removeDemo() {
@@ -297,6 +449,7 @@ export class LeadStore {
     let contacted = 0;
     let demo = 0;
     const services = {};
+    const sources = {};
     let newest = null;
 
     for (const lead of this.leads.values()) {
@@ -305,6 +458,8 @@ export class LeadStore {
       for (const service of lead.services) {
         services[service] = (services[service] ?? 0) + 1;
       }
+      const sourceKey = lead.sourceName || lead.sourceUrl || "Unknown";
+      sources[sourceKey] = (sources[sourceKey] ?? 0) + 1;
       if (!newest || lead.postedAtMs > newest) newest = lead.postedAtMs;
     }
 
@@ -316,6 +471,12 @@ export class LeadStore {
       demo,
       duplicates: countDuplicateLeads([...this.leads.values()]),
       services,
+      sources,
+      blocked: {
+        posts: this.blocked.ids.size,
+        authors: this.blocked.authors.size,
+        sources: this.blocked.sources.size
+      },
       lastScanAt: this.lastScanAt,
       newestLeadAt: newest ? new Date(newest).toISOString() : null,
       now

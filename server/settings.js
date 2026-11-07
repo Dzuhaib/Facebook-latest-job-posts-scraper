@@ -96,8 +96,12 @@ export function getSettings(cwd) {
     windowMinutes: config.windowMinutes,
     minScore: config.minScore,
     maxResultsPerSource: config.maxResultsPerSource,
+    retentionHours: config.retentionHours ?? 0,
+    concurrency: config.sources.concurrency ?? 3,
     groups: config.sources.groups,
     pages: config.sources.pages,
+    disabledSources: config.sources.disabled ?? [],
+    limits: config.sources.limits ?? {},
     skills: config.intent.extra.skills ?? []
   };
 }
@@ -120,8 +124,23 @@ export function saveSettings(cwd, input = {}) {
     1000
   );
 
+  const retentionHours = intInRange(
+    input.retentionHours ?? config.retentionHours ?? 0,
+    "retentionHours",
+    0,
+    8760
+  );
+  const concurrency = intInRange(
+    input.concurrency ?? config.sources.concurrency ?? 3,
+    "concurrency",
+    1,
+    10
+  );
+
   const groups = parseUrls(input.groups, "groups") ?? config.sources.groups;
   const pages = parseUrls(input.pages, "pages") ?? config.sources.pages;
+  const disabledSources =
+    parseUrls(input.disabledSources, "disabledSources") ?? config.sources.disabled ?? [];
   const skills = parseSkills(input.skills) ?? config.intent.extra.skills ?? [];
 
   const next = {
@@ -129,10 +148,13 @@ export function saveSettings(cwd, input = {}) {
     windowMinutes,
     minScore,
     maxResultsPerSource,
+    retentionHours,
     sources: {
       ...(raw.sources ?? {}),
       groups,
-      pages
+      pages,
+      disabled: disabledSources,
+      concurrency
     },
     intent: {
       ...(raw.intent ?? {}),

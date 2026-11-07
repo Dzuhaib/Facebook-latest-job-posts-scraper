@@ -1164,6 +1164,125 @@ tbody tr.is-contacted:hover {
   background: #991b1b;
 }
 
+.why {
+  margin: 2px 0 8px;
+}
+
+.why summary {
+  width: max-content;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.why summary:hover {
+  text-decoration: underline;
+}
+
+.why-body {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--soft);
+}
+
+.why-item {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.why-item strong {
+  flex: 0 0 74px;
+  padding-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.why-item span {
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.why-score {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.danger-link {
+  color: var(--red);
+}
+
+.source-summary {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.source-summary-title {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.source-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.source-summary-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-summary-row b {
+  flex: 0 0 auto;
+  color: var(--text);
+}
+
+.source-summary-row.muted {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 @media (max-width: 980px) {
   .workspace {
     grid-template-columns: 1fr;
