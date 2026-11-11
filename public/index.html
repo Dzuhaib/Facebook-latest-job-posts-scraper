@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FB Fresh Leads</title>
+    <title>Fresh Leads</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="topbar-left">
         <div class="brand">
-          <div class="logo">FB</div>
+          <div class="logo">FL</div>
           <div>
             <h1>Fresh Leads</h1>
             <p id="lastScan">Loading...</p>
@@ -73,6 +73,11 @@
               <button class="tab" type="button" data-status="contacted">Contacted</button>
             </div>
             <div class="filters sidebar-filters">
+              <select id="platformFilter" aria-label="Platform">
+                <option value="all">All platforms</option>
+                <option value="facebook">Facebook</option>
+                <option value="linkedin">LinkedIn posts</option>
+              </select>
               <select id="recencyFilter" aria-label="Posted within">
                 <option value="">Any time</option>
                 <option value="10">Last 10 minutes</option>
@@ -129,7 +134,8 @@
             </div>
             <p class="source-issues-hint">
               Only public groups and pages can be scraped. Open a URL in a private window; if
-              Facebook asks you to join, the group is private.
+              Facebook asks you to join, the group is private. LinkedIn searches can also fail if
+              the actor input is invalid.
             </p>
             <ul id="sourceIssuesList"></ul>
           </section>
@@ -151,7 +157,7 @@
 
               <div id="emptyState" class="empty hidden">
                 <h3 id="emptyTitle">No leads yet</h3>
-                <p id="emptyText">Run a scan to fetch fresh Facebook posts, or load demo data.</p>
+                <p id="emptyText">Run a scan to fetch fresh Facebook posts and LinkedIn posts, or load demo data.</p>
               </div>
             </div>
 
@@ -234,6 +240,56 @@
               Sources listed here are skipped without being deleted. Remove a line to enable the
               source again.
             </small>
+          </label>
+
+          <h3 class="settings-section">LinkedIn posts</h3>
+
+          <label class="check">
+            <input id="linkedinEnabled" type="checkbox" />
+            <span>Search LinkedIn posts</span>
+          </label>
+
+          <label class="field">
+            <span>Post search queries (one per line)</span>
+            <textarea
+              id="linkedinKeywords"
+              rows="6"
+              spellcheck="false"
+              placeholder="hiring web developer&#10;looking for web developer&#10;need website developer"
+            ></textarea>
+            <small>Each query runs a separate Apify post search and costs credits.</small>
+          </label>
+
+          <div class="grid-2">
+            <label class="field">
+              <span>Date posted</span>
+              <select id="linkedinDatePosted">
+                <option value="past24Hours">Past 24 hours</option>
+                <option value="pastWeek">Past week</option>
+                <option value="pastMonth">Past month</option>
+                <option value="anyTime">Any time</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Max posts / query</span>
+              <input id="linkedinLimit" type="number" min="1" max="1000" />
+            </label>
+          </div>
+
+          <div class="grid-2">
+            <label class="field">
+              <span>Keep posts from (hours)</span>
+              <input id="linkedinWindowHours" type="number" min="1" max="720" />
+            </label>
+            <label class="field">
+              <span>LinkedIn min score</span>
+              <input id="linkedinMinScore" type="number" min="0" max="100" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Searches in parallel</span>
+            <input id="linkedinConcurrency" type="number" min="1" max="5" />
           </label>
 
           <label class="field">

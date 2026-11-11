@@ -12,6 +12,10 @@ function normalizeAuthor(value) {
     .toLowerCase();
 }
 
+function platformOf(lead) {
+  return lead?.platform === "linkedin" ? "linkedin" : "facebook";
+}
+
 function number(value) {
   return Number(value) || 0;
 }
@@ -19,7 +23,7 @@ function number(value) {
 export function duplicateFingerprint(lead = {}) {
   const text = normalizeText(lead.text);
   if (text.length < MIN_FINGERPRINT_TEXT) return null;
-  return `${normalizeAuthor(lead.author)}\u0000${text}`;
+  return `${platformOf(lead)}\u0000${normalizeAuthor(lead.author)}\u0000${text}`;
 }
 
 function shingles(text) {
@@ -48,6 +52,7 @@ function jaccard(left, right) {
 
 export function isNearDuplicate(left, right) {
   if (!left || !right) return false;
+  if (platformOf(left) !== platformOf(right)) return false;
   if (String(left.id) === String(right.id)) return true;
   if (normalizeAuthor(left.author) !== normalizeAuthor(right.author)) return false;
 
@@ -67,6 +72,7 @@ export function findNearDuplicate(candidates, lead) {
   let checked = 0;
   for (const candidate of candidates) {
     if (checked >= MAX_COMPARE) break;
+    if (platformOf(candidate) !== platformOf(lead)) continue;
     if (normalizeAuthor(candidate.author) !== normalizeAuthor(lead.author)) continue;
     checked += 1;
     if (isNearDuplicate(candidate, lead)) return candidate;
@@ -166,7 +172,8 @@ function mergeSimilarGroups(groups) {
 
   const byAuthor = new Map();
   groups.forEach((group, index) => {
-    const author = normalizeAuthor(group[0]?.author);
+    const lead = group[0];
+    const author = `${platformOf(lead)}|${normalizeAuthor(lead?.author)}`;
     const bucket = byAuthor.get(author);
     if (bucket) bucket.push(index);
     else byAuthor.set(author, [index]);

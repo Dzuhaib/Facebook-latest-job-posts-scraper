@@ -2,6 +2,7 @@ const state = {
   page: 1,
   pageSize: 20,
   status: "all",
+  platform: "all",
   services: [],
   sort: "newest",
   q: "",
@@ -45,6 +46,7 @@ const nodes = {
   serviceFilterBtn: $("#serviceFilterBtn"),
   serviceFilterLabel: $("#serviceFilterLabel"),
   serviceFilterMenu: $("#serviceFilterMenu"),
+  platformFilter: $("#platformFilter"),
   recencyFilter: $("#recencyFilter"),
   sortFilter: $("#sortFilter"),
   pageSize: $("#pageSize"),
@@ -76,6 +78,13 @@ const nodes = {
   disabledSourcesInput: $("#disabledSourcesInput"),
   sourceSummary: $("#sourceSummary"),
   skillsInput: $("#skillsInput"),
+  linkedinEnabled: $("#linkedinEnabled"),
+  linkedinKeywords: $("#linkedinKeywords"),
+  linkedinDatePosted: $("#linkedinDatePosted"),
+  linkedinLimit: $("#linkedinLimit"),
+  linkedinWindowHours: $("#linkedinWindowHours"),
+  linkedinMinScore: $("#linkedinMinScore"),
+  linkedinConcurrency: $("#linkedinConcurrency"),
   testTokenBtn: $("#testTokenBtn"),
   saveSettingsBtn: $("#saveSettingsBtn"),
   toast: $("#toast")
@@ -263,7 +272,7 @@ function renderWhy(lead) {
       ["intent", breakdown.phrasePoints],
       ["negative", -breakdown.negativePoints],
       ["noise", -breakdown.noisePoints]
-    ].filter(([, points]) => Number(points) !== 0);
+    ].filter(([, points]) => Number.isFinite(Number(points)) && Number(points) !== 0);
 
     const scoreLine = el("div", "why-score");
     const detail = parts
@@ -314,6 +323,7 @@ function renderRow(lead) {
   const row = el("tr");
   row.dataset.id = lead.id;
   row.classList.toggle("is-contacted", lead.contacted);
+  const platform = lead.platform === "linkedin" ? "linkedin" : "facebook";
 
   const contactCell = el("td", "col-contact");
   const pill = el("button", "contact-pill");
@@ -331,7 +341,11 @@ function renderRow(lead) {
   author.href = safeUrl(lead.authorUrl || lead.postUrl);
   author.target = "_blank";
   author.rel = "noopener noreferrer";
-  nameRow.append(author, el("span", `score ${scoreClass(lead.score)}`, String(lead.score)));
+  nameRow.append(
+    author,
+    el("span", `score ${scoreClass(lead.score)}`, String(lead.score)),
+    el("span", `pill platform ${platform}`, platform === "linkedin" ? "LinkedIn" : "Facebook")
+  );
   if (lead.demo) {
     const demo = el("span", "pill demo", "Demo");
     demo.title = "Sample data from Load demo leads - not a real Facebook post";
@@ -479,6 +493,7 @@ function renderPager(data) {
 function renderEmpty(data) {
   const hasFilters =
     state.status !== "all" ||
+    state.platform !== "all" ||
     state.services.length > 0 ||
     state.maxAgeMinutes > 0 ||
     state.q !== "";
@@ -499,7 +514,8 @@ function renderEmpty(data) {
     nodes.emptyText.textContent = "Try a different search or clear the filters.";
   } else {
     nodes.emptyTitle.textContent = "No leads yet";
-    nodes.emptyText.textContent = "Run a scan to fetch fresh Facebook posts, or load demo data.";
+    nodes.emptyText.textContent =
+      "Run a scan to fetch fresh Facebook posts and LinkedIn posts, or load demo data.";
   }
 }
 
@@ -512,6 +528,7 @@ async function loadLeads() {
     page: String(state.page),
     pageSize: String(state.pageSize),
     status: state.status,
+    platform: state.platform,
     services: state.services.join(","),
     sort: state.sort,
     q: state.q,
@@ -547,14 +564,34 @@ function renderSourceSummary(data) {
   const blockedPosts = Number(blocked.posts) || 0;
   const blockedAuthors = Number(blocked.authors) || 0;
   const blockedSources = Number(blocked.sources) || 0;
+  const platforms = data.platforms ?? {};
+  const platformRows = [
+    ["Facebook", Number(platforms.facebook) || 0],
+    ["LinkedIn posts", Number(platforms.linkedin) || 0]
+  ].filter(([, count]) => count > 0);
 
   nodes.sourceSummary.replaceChildren();
-  if (rows.length === 0 && blockedPosts + blockedAuthors + blockedSources === 0) {
+  if (
+    rows.length === 0 &&
+    platformRows.length === 0 &&
+    blockedPosts + blockedAuthors + blockedSources === 0
+  ) {
     nodes.sourceSummary.classList.add("hidden");
     return;
   }
 
-  nodes.sourceSummary.append(el("div", "source-summary-title", "Sources"));
+  if (platformRows.length > 0) {
+    nodes.sourceSummary.append(el("div", "source-summary-title", "Platforms"));
+    for (const [name, count] of platformRows) {
+      const item = el("div", "source-summary-row");
+      item.append(el("span", null, name), el("b", null, String(count)));
+      nodes.sourceSummary.append(item);
+    }
+  }
+
+  if (rows.length > 0) {
+    nodes.sourceSummary.append(el("div", "source-summary-title", "Sources"));
+  }
   for (const [name, count] of rows) {
     const item = el("div", "source-summary-row");
     const label = el("span", null, name);
@@ -703,7 +740,7 @@ function renderSourceIssues(scan) {
 
   nodes.sourceIssuesTitle.textContent = `${issues.length} source${
     issues.length === 1 ? "" : "s"
-  } returned no posts`;
+  } returned no results`;
   nodes.sourceIssuesList.replaceChildren();
 
   for (const issue of issues) {
@@ -774,6 +811,7 @@ function goToPage(page) {
 
 function clearFilters() {
   state.status = "all";
+  state.platform = "all";
   state.services = [];
   state.q = "";
   state.sort = "newest";
@@ -781,6 +819,7 @@ function clearFilters() {
   state.page = 1;
 
   nodes.searchInput.value = "";
+  nodes.platformFilter.value = "all";
   nodes.recencyFilter.value = "";
   nodes.sortFilter.value = "newest";
   syncServiceFilter(state.skills, state.serviceCounts);
@@ -973,6 +1012,17 @@ async function openSettings() {
     nodes.disabledSourcesInput.value = (settings.disabledSources ?? []).join("\n");
     nodes.skillsInput.value = (settings.skills ?? []).join("\n");
 
+    const linkedin = settings.linkedin ?? {};
+    nodes.linkedinEnabled.checked = Boolean(linkedin.enabled);
+    nodes.linkedinKeywords.value = (linkedin.keywords ?? []).join("\n");
+    nodes.linkedinDatePosted.value = linkedin.datePosted ?? "past24Hours";
+    nodes.linkedinLimit.value = String(linkedin.maxResultsPerKeyword ?? 30);
+    nodes.linkedinWindowHours.value = String(
+      Math.round(((linkedin.windowMinutes ?? 1440) / 60) * 10) / 10
+    );
+    nodes.linkedinMinScore.value = String(linkedin.minScore ?? 4);
+    nodes.linkedinConcurrency.value = String(linkedin.concurrency ?? 2);
+
     nodes.tokenInput.value = "";
     nodes.tokenInput.placeholder = settings.tokenSet
       ? `Saved: ${settings.tokenPreview}`
@@ -999,7 +1049,16 @@ async function saveSettings(event) {
     groups: splitLines(nodes.groupsInput.value),
     pages: splitLines(nodes.pagesInput.value),
     disabledSources: splitLines(nodes.disabledSourcesInput.value),
-    skills: splitLines(nodes.skillsInput.value)
+    skills: splitLines(nodes.skillsInput.value),
+    linkedin: {
+      enabled: nodes.linkedinEnabled.checked,
+      keywords: splitLines(nodes.linkedinKeywords.value),
+      datePosted: nodes.linkedinDatePosted.value,
+      maxResultsPerKeyword: Number(nodes.linkedinLimit.value),
+      windowMinutes: Math.round(Number(nodes.linkedinWindowHours.value) * 60),
+      minScore: Number(nodes.linkedinMinScore.value),
+      concurrency: Number(nodes.linkedinConcurrency.value)
+    }
   };
 
   const token = nodes.tokenInput.value.trim();
@@ -1133,6 +1192,12 @@ function bindEvents() {
     if (event.key === "Escape") setServiceMenu(false);
   });
 
+  nodes.platformFilter.addEventListener("change", () => {
+    state.platform = nodes.platformFilter.value;
+    state.page = 1;
+    loadLeads();
+  });
+
   nodes.recencyFilter.addEventListener("change", () => {
     state.maxAgeMinutes = Number(nodes.recencyFilter.value) || 0;
     state.page = 1;
@@ -1177,6 +1242,13 @@ function bindEvents() {
   });
 }
 
+function scheduleAutoScan() {
+  setInterval(() => {
+    if (state.scanning) return;
+    startScan(false);
+  }, 5 * 60 * 1000);
+}
+
 async function init() {
   bindEvents();
   nodes.pageSize.value = String(state.pageSize);
@@ -1184,6 +1256,7 @@ async function init() {
   await Promise.allSettled([loadSettings(), loadStats(), loadLeads()]);
   await refreshScanStatus();
 
+  scheduleAutoScan();
   setInterval(updateRelativeTimes, 30000);
 }
 

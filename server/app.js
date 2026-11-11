@@ -136,7 +136,7 @@ export function createApp({
         );
         if (leads.length === 0 && sourceErrors > 0) {
           pushLog(
-            "No leads because some sources returned no posts. Use public, active groups/pages and check the errors above."
+            "No leads because some sources returned no results. Use public, active groups/pages, check the LinkedIn searches, and review the errors above."
           );
         }
       } catch (error) {

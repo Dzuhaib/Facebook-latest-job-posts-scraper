@@ -2,16 +2,16 @@
   <img src="public/Facebook%20Job%20Discovery%20Dashboard%20Banner.png" alt="Facebook Job Discovery Dashboard banner" width="100%" />
 </p>
 
-<h1 align="center">Facebook Fresh Leads</h1>
+<h1 align="center">Facebook + LinkedIn Fresh Leads</h1>
 
 <p align="center">
-  Find public Facebook posts where people are hiring or asking for your services — while the post is still fresh.
+  Find fresh public Facebook buying-intent posts and LinkedIn hiring posts that match your services.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-20.12%2B-339933?logo=node.js&logoColor=white" alt="Node.js 20.12+" />
-  <img src="https://img.shields.io/badge/Apify-official%20actors-00A67E" alt="Apify official actors" />
-  <img src="https://img.shields.io/badge/tests-88%20passing-brightgreen" alt="88 tests passing" />
+  <img src="https://img.shields.io/badge/Apify-actors-00A67E" alt="Apify actors" />
+  <img src="https://img.shields.io/badge/tests-100%20passing-brightgreen" alt="100 tests passing" />
   <img src="https://img.shields.io/badge/dashboard-local-blue" alt="Local dashboard" />
 </p>
 
@@ -19,35 +19,40 @@
 
 ## What it does
 
-Facebook Fresh Leads monitors public Facebook groups and pages for buying intent. It fetches recent posts, scores them against your services and skills, removes duplicates, and gives you a local dashboard for reviewing and contacting leads.
+Fresh Leads monitors public Facebook groups/pages for buying intent **and** LinkedIn posts where people are hiring, looking for freelance help, or asking for tasks to be completed. It fetches recent posts, scores them for buying intent, removes duplicates, and gives you a local dashboard for reviewing and contacting leads.
 
 It is built for freelancers and agencies who want to answer real requests quickly — not scrape the entire internet.
 
 | You get | Why it matters |
 | --- | --- |
-| Fresh posts only | A configurable window (default 10 minutes) keeps the list actionable |
-| Intent scoring | Service keywords plus buying signals, not just keyword matches |
+| Two lead sources | Facebook buying-intent posts plus LinkedIn hiring posts in one dashboard |
+| Fresh posts only | A configurable Facebook window (default 10 minutes) and LinkedIn window (default 24 hours) |
+| Platform-aware scoring | Buying-intent scoring for both Facebook and LinkedIn, with a separate LinkedIn minimum score |
 | Your own skills | Add video editing, design, Shopify, AI automation, or anything else |
-| Local dashboard | Review, search, filter, and mark leads as contacted |
+| Local dashboard | Review, filter by platform, search, and mark leads as contacted |
 | Multiple exports | JSON, CSV, Markdown, and JSONL for automation tools |
-| Official Apify actors | No unofficial scrapers or browser extensions |
+| Apify-hosted actors | No browser extensions or local scraping |
 
 ## Features
 
-- **Recency guard** — the time window is enforced by Apify and again locally, so old posts cannot slip through.
-- **Intent scoring** — every post is scored from service matches, need/hiring phrases, and intent phrases; negative and noise terms subtract points.
-- **Strict buyer-only gate** — rejects freelancer ads, service offers, availability pitches, learning/advice questions, and "DM me" sales posts.
+- **LinkedIn post search** — optional `harvestapi/linkedin-post-search` integration with buyer-intent query searches, date-posted filters, and buying-intent scoring.
+- **Separate windows** — Facebook uses the fast `windowMinutes` window (default 10 minutes); LinkedIn posts keep their own `linkedin.windowMinutes` window (default 24 hours).
+- **Recency guard** — time windows are enforced by the actors and again locally, so old posts cannot slip through.
+- **Intent scoring** — Facebook posts are scored from service matches, need/hiring phrases, and intent phrases; negative and noise terms subtract points.
+- **Buyer-only gate** — LinkedIn and Facebook posts must contain a service/skill plus a hiring or need signal; job listings are discarded.
+- **Noise and seller filters** — rejects freelancer ads, service offers, availability pitches, learning/advice questions, and "DM me" sales posts.
 - **Explainable leads** — every saved lead keeps the matched keywords and score breakdown behind "Why this lead?".
 - **Re-validation** — saved leads are re-scored on startup and after every scan, so stale/no-longer-matching rows are dropped automatically.
 - **Custom services and skills** — add your own keywords from the dashboard Settings or `config.json`; common word forms (design/designer, edit/editor) are matched automatically.
 - **Multi-select service filter** — choose as many services as you want; results match any selected service.
 - **Not relevant** — remove a lead and optionally block its post, author, or source from future scans.
-- **Duplicate cleanup** — exact and near-duplicate reposts with the same author are merged into one lead; existing duplicates can be removed from the sidebar.
+- **Duplicate cleanup** — exact and near-duplicate reposts with the same author are merged into one lead; duplicates never merge across platforms.
 - **Contact tracking** — mark leads as contacted; the state survives rescans.
-- **Demo mode** — load sample leads without spending Apify credits.
-- **Demo-only cleanup** — remove sample leads without touching real Facebook leads.
-- **Source issue reporting** — see which public group or page could not be read and why.
-- **Per-source controls** — disable individual sources and set per-source result limits.
+- **Demo mode** — load sample Facebook leads without spending Apify credits.
+- **Demo-only cleanup** — remove sample leads without touching real leads.
+- **Platform filter** — switch between Facebook, LinkedIn posts, or both.
+- **Source issue reporting** — see which group, page, or LinkedIn search could not be read and why.
+- **Per-source controls** — disable individual Facebook sources and set per-source result limits.
 - **Notifications** — optional Telegram, Discord, or generic webhook alerts when new leads arrive.
 - **Retention** — optionally prune leads older than a configurable number of hours.
 - **Background scans** — the dashboard polls scan status, so you can leave it open.
@@ -57,29 +62,31 @@ It is built for freelancers and agencies who want to answer real requests quickl
 ## How it works
 
 ```text
-Public Facebook groups / pages
-            |
-            v
-   Official Apify actors
-            |
-            v
- Recency check + normalization
-            |
-            v
- Intent scoring + service detection
-            |
-            v
- Deduplication + local lead store
-            |
-            v
- Dashboard / JSON / CSV / Markdown / JSONL
+Public Facebook groups / pages          LinkedIn post queries
+            |                                  |
+            v                                  v
+   Facebook Apify actors              LinkedIn Apify actor
+            |                                  |
+            +----------------+-----------------+
+                             |
+                             v
+              Recency check + normalization
+                             |
+                             v
+      Facebook intent scoring | LinkedIn intent scoring
+                             |
+                             v
+              Deduplication + local lead store
+                             |
+                             v
+       Dashboard / JSON / CSV / Markdown / JSONL
 ```
 
-A post must pass three gates before it becomes a lead:
+A row must pass three gates before it becomes a lead:
 
-1. **Recency** — published inside your scan window.
-2. **Intent** — mentions a service or custom skill **and** contains a buying signal, with a score at or above `minScore`.
-3. **Novelty** — its post ID has not already been seen.
+1. **Recency** — inside the platform window (`windowMinutes` for Facebook, `linkedin.windowMinutes` for posts).
+2. **Relevance** — Facebook needs a service/skill plus a buying signal; LinkedIn needs a service/skill plus a hiring or need signal with a score at or above `linkedin.minScore`.
+3. **Novelty** — its ID has not already been seen and it is not a duplicate of an existing lead.
 
 ## Quick start
 
@@ -120,9 +127,16 @@ Open `config.json` and add the **public** Facebook groups and/or pages you want 
     "pages": [
       "https://www.facebook.com/your-page"
     ]
+  },
+  "linkedin": {
+    "enabled": true,
+    "keywords": ["hiring web developer", "need seo help", "looking for video editor"],
+    "datePosted": "past24Hours"
   }
 }
 ```
+
+Leave `linkedin.enabled` as `false` if you only want Facebook. When enabled, each query runs a separate Apify LinkedIn post search.
 
 > Private groups, personal profiles, and login-only content cannot be scraped. Open the URL in a private browser window; if Facebook asks you to join, the group is private.
 
@@ -154,8 +168,9 @@ The dashboard is designed for fast triage:
 
 - **Stats bar** — total leads, not contacted, contacted, and last scan time.
 - **Scan now** — starts a real Apify scan. A spinner and status badge show progress.
-- **Filters sidebar** — contact status, recency, search, multi-select services, sort order, and page size.
-- **Leads table** — post text, author, source, services, posted time, engagement, and contact action.
+- **Filters sidebar** — platform (Facebook / LinkedIn posts), contact status, recency, search, multi-select services, sort order, and page size.
+- **Leads table** — author, source, services, posted time, engagement, and contact action.
+- **Platform badges** — each row is marked Facebook or LinkedIn; LinkedIn rows show likes, comments, and shares.
 - **Mark** — flags a lead as contacted. Click again to undo.
 - **Why this lead?** — expands the matched service, need/hiring, and intent keywords together with the score breakdown.
 - **Not relevant** — deletes the lead and, if you choose, blocks the post, author, or source from future scans.
@@ -164,7 +179,7 @@ The dashboard is designed for fast triage:
 - **Remove duplicates** — appears when reposts are found; keeps one copy and preserves contact state.
 - **Clear filters** — appears when a filter is active.
 - **Fetch last** — sets the scan window in minutes or hours and saves it automatically.
-- **Settings** — edits the token, score threshold, per-source limit, sources, disabled sources, retention, concurrency, and services/skills.
+- **Settings** — edits the token, Facebook sources/limits, LinkedIn post queries/date filter/window, retention, concurrency, and services/skills.
 
 ### Service filter
 
@@ -203,7 +218,16 @@ If older data already contains duplicates, the sidebar shows **Remove duplicates
 | `sources.pages` | `[]` | Public Facebook page URLs |
 | `sources.disabled` | `[]` | Source URLs to skip without deleting them |
 | `sources.limits` | `{}` | Per-source result limit, e.g. `{"https://...": 50}` |
-| `sources.concurrency` | `3` | How many sources are scraped in parallel (1-10) |
+| `sources.concurrency` | `3` | How many Facebook sources are scraped in parallel (1-10) |
+| `linkedin.enabled` | `false` | Enable LinkedIn post search |
+| `linkedin.actorId` | `"harvestapi/linkedin-post-search"` | LinkedIn post search actor |
+| `linkedin.keywords` | built-in buyer-intent query list | One Apify post search per query |
+| `linkedin.datePosted` | `"past24Hours"` | `anyTime`, `past24Hours`, `pastWeek`, or `pastMonth` |
+| `linkedin.windowMinutes` | `1440` | Keep LinkedIn posts within this many minutes |
+| `linkedin.maxResultsPerKeyword` | `30` | Max posts requested per query |
+| `linkedin.minScore` | `4` | Minimum buying-intent score for LinkedIn posts |
+| `linkedin.concurrency` | `2` | How many LinkedIn searches run in parallel (1-5) |
+| `linkedin.usdPer1000` | `2` | Price used for the cost estimate |
 | `intent.extra.services` | `{}` | Extra keywords per built-in service |
 | `intent.extra.skills` | `[]` | Your own services/skills |
 | `intent.extra.need` | `[]` | Extra buying-signal phrases |
@@ -309,12 +333,13 @@ The dashboard stores its own data in `data/leads.json`, separate from CLI report
 
 ## Cost
 
-Apify charges per scraped post. Approximate prices:
+Apify charges per scraped result. Approximate prices:
 
-- **Groups:** about $2.60 per 1,000 results
-- **Pages:** about $7.00 per 1,000 pages (including the date filter)
+- **Facebook groups:** about $2.60 per 1,000 results
+- **Facebook pages:** about $7.00 per 1,000 results (including the date filter)
+- **LinkedIn posts:** `harvestapi/linkedin-post-search` is priced separately (about $2.00 per 1,000 results at the time of writing). Check the actor page for the current price and set `linkedin.usdPer1000` to match.
 
-The tool prints a worst-case estimate before each real run. Because the actor only returns posts inside your window, real costs are usually much lower. `npm run dry-run` is free.
+The tool prints a worst-case estimate before each real run, including every LinkedIn query search. Because the actors only return results inside your windows, real costs are usually lower. `npm run dry-run` is free and never calls LinkedIn.
 
 ## Scheduling
 
@@ -330,10 +355,17 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 
 ### Scan returns zero leads
 
-- Check the **Source issues** panel or terminal log for `source(s) returned no posts` or `Empty or private data for provided input`.
+- Check the **Source issues** panel or terminal log for `source(s) returned no results` or `Empty or private data for provided input`.
 - Open the group or page URL in a private browser window. If Facebook asks you to join or log in, it is private and cannot be scraped.
 - A wider window includes older posts; it does not unlock private groups.
 - Add more active public groups. One group may only post a few times per hour.
+- For LinkedIn, check that `linkedin.enabled` is true, keywords are set, and the actor run status in the terminal log is `SUCCEEDED`.
+
+### LinkedIn returns posts but no leads
+
+- Lower `linkedin.minScore`, or add buyer-intent queries such as `hiring web developer` to `linkedin.keywords`.
+- Use `datePosted: "pastWeek"` if `past24Hours` is too narrow.
+- Job listings are intentionally discarded, and posts without a service plus hiring/need signal are filtered out; check **Why this lead?** for matched service, need, and hiring terms.
 
 ### Too many irrelevant leads
 
@@ -362,9 +394,9 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 │   ├── index.js             One-shot CLI
 │   ├── watch.js             Interval loop
 │   ├── apify.js             Apify actor calls and cost estimate
-│   ├── normalize.js         Unified post shape
-│   ├── intent.js            Keyword scoring
-│   ├── filter.js            Recency, intent, and dedupe pipeline
+│   ├── normalize.js         Unified Facebook and LinkedIn post shapes
+│   ├── intent.js            Buying-intent scoring
+│   ├── │   ├── filter.js            Platform-aware recency, scoring, and dedupe pipeline
 │   ├── duplicates.js        Repost fingerprinting and duplicate cleanup
 │   ├── state.js             Seen-post store
 │   ├── notify.js            Telegram, Discord, and webhook alerts
@@ -378,10 +410,10 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 
 ## Privacy and limitations
 
-- Only public groups and pages are supported. Personal profiles and private groups are not.
+- Only public Facebook groups/pages and public LinkedIn posts are supported. Personal profiles, private groups, and login-only content are not.
 - The dashboard binds to `127.0.0.1` by default and rejects non-loopback `Host` headers. There is no authentication; do not expose it to the internet without adding auth.
 - `.env`, `config.json`, `data/`, `output/`, and `.state/` are ignored by Git because they can contain secrets, personal data, or runtime state.
-- The tool collects publicly visible posts for outreach research. Follow Facebook's terms and applicable privacy laws when storing or contacting people.
+- The tool collects publicly visible posts for outreach research. Follow Facebook's, LinkedIn's, and Apify's terms and applicable privacy laws when storing or contacting people.
 
 ## Tests
 
@@ -389,7 +421,7 @@ You can also schedule the Apify actors directly, but scoring, deduplication, and
 npm test
 ```
 
-The test suite covers configuration, Apify input, normalization, intent scoring, duplicate detection and removal, lead storage and re-validation, blocking, settings, demo removal, notifications, and dashboard API behavior.
+The suite has 100 tests covering configuration, Apify input/costs, Facebook and LinkedIn post normalization, buying-intent scoring, platform-aware filtering, duplicate detection and removal, lead storage and re-validation, blocking, settings, demo removal, notifications, and dashboard API behavior.
 
 ## Contributing
 
@@ -397,10 +429,11 @@ Issues and pull requests are welcome. Please keep changes focused, add or update
 
 ## Acknowledgements
 
-Built with [Apify](https://apify.com/) and the official Facebook scrapers:
+Built with [Apify](https://apify.com/) and these actors:
 
 - `apify/facebook-groups-scraper`
 - `apify/facebook-posts-scraper`
+- `harvestapi/linkedin-post-search`
 
 ---
 

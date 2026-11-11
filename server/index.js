@@ -14,7 +14,7 @@ const host = process.env.UI_HOST ?? "127.0.0.1";
 const { app } = createApp({ cwd });
 
 const server = app.listen(port, host, () => {
-  console.log(`FB Fresh Leads UI: http://${host}:${port}`);
+  console.log(`Fresh Leads UI: http://${host}:${port}`);
   console.log("Press Ctrl+C to stop.");
 });
 

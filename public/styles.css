@@ -807,6 +807,36 @@ tbody tr.is-contacted:hover {
   text-transform: uppercase;
 }
 
+.pill.platform {
+  font-weight: 600;
+  text-transform: none;
+}
+
+.pill.platform.facebook {
+  background: #e7f0ff;
+  color: #1877f2;
+}
+
+.pill.platform.linkedin {
+  background: #e6f4f8;
+  color: #0a66c2;
+}
+
+.pill.remote {
+  background: var(--green-soft);
+  color: #15803d;
+}
+
+.job-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .posted strong {
   display: block;
   font-size: 13px;
@@ -1088,6 +1118,36 @@ tbody tr.is-contacted:hover {
 
 .field small.error {
   color: var(--red);
+}
+
+.settings-section {
+  margin: 8px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.check input {
+  width: auto;
+  accent-color: var(--primary);
+}
+
+.check.compact {
+  font-weight: 500;
 }
 
 .grid-3 {

@@ -19,6 +19,7 @@ function csvCell(value) {
 
 function toCsv(leads) {
   const header = [
+    "platform",
     "posted_at",
     "age_minutes",
     "score",
@@ -33,6 +34,7 @@ function toCsv(leads) {
   ];
   const rows = leads.map((lead) =>
     [
+      lead.platform ?? "facebook",
       lead.postedAt,
       lead.ageMinutes,
       lead.score,
@@ -72,12 +74,15 @@ function serviceCounts(leads) {
 
 function toMarkdown({ leads, stats, config, generatedAt }) {
   const counts = serviceCounts(leads);
+  const linkedinLine = config.linkedin?.enabled
+    ? ` | LinkedIn posts: last ${config.linkedin.windowMinutes} min, ${config.linkedin.keywords.length} query(ies)`
+    : "";
   const lines = [
-    `# Facebook fresh leads`,
+    `# Fresh leads`,
     "",
     `Generated: ${generatedAt}`,
     `Window: last ${config.windowMinutes} minutes`,
-    `Sources: ${config.sources.groups.length} group(s), ${config.sources.pages.length} page(s)`,
+    `Sources: ${config.sources.groups.length} group(s), ${config.sources.pages.length} page(s)${linkedinLine}`,
     `Leads: ${leads.length} (examined ${stats.examined}, outside window ${stats.outsideWindow}, duplicates ${stats.duplicate}, irrelevant ${stats.irrelevant})`,
     "",
     "## By service",
@@ -99,9 +104,10 @@ function toMarkdown({ leads, stats, config, generatedAt }) {
   }
 
   leads.forEach((lead, index) => {
+    const platform = lead.platform === "linkedin" ? "LinkedIn" : "Facebook";
     const engagement = `likes ${lead.engagement.likes}, comments ${lead.engagement.comments}, shares ${lead.engagement.shares}`;
     lines.push(
-      `### ${index + 1}. [score ${lead.score}] ${formatAge(lead.ageMinutes)} - ${lead.services.join(", ")}`,
+      `### ${index + 1}. [${platform}] [score ${lead.score}] ${formatAge(lead.ageMinutes)} - ${lead.services.join(", ")}`,
       "",
       `**${lead.author}** | ${lead.sourceName} | ${engagement}`,
       "",
@@ -125,6 +131,7 @@ export function writeReports({ config, leads, stats, generatedAt = new Date() })
     windowMinutes: config.windowMinutes,
     minScore: config.minScore,
     sources: config.sources,
+    linkedin: config.linkedin ?? null,
     stats,
     leads
   };
@@ -161,12 +168,13 @@ export function printLeads(leads, { max = 20, log = console.log } = {}) {
   }
 
   leads.slice(0, max).forEach((lead, index) => {
+    const platform = lead.platform === "linkedin" ? "LinkedIn" : "Facebook";
     const engagement = `likes ${lead.engagement.likes} / comments ${lead.engagement.comments}`;
     const snippet =
       lead.text.length > 320 ? `${lead.text.slice(0, 317).trimEnd()}...` : lead.text;
     log("");
     log(
-      `${index + 1}. [score ${lead.score}] ${formatAge(lead.ageMinutes)} | ${lead.services.join(", ")} | ${lead.author} (${lead.sourceName})`
+      `${index + 1}. [${platform}] [score ${lead.score}] ${formatAge(lead.ageMinutes)} | ${lead.services.join(", ")} | ${lead.author} (${lead.sourceName})`
     );
     log(`   ${snippet.replace(/\s+/g, " ")}`);
     log(`   ${lead.postUrl} | ${engagement}`);

@@ -53,6 +53,7 @@ function isoOrNull(value) {
 function toClient(lead, now) {
   return {
     id: lead.id,
+    platform: lead.platform === "linkedin" ? "linkedin" : "facebook",
     postedAt: lead.postedAt,
     postedAtMs: lead.postedAtMs,
     ageMinutes: ageMinutes(lead.postedAtMs, now),
@@ -88,6 +89,7 @@ function cleanLead(lead, nowIso) {
 
   return {
     id,
+    platform: lead.platform === "linkedin" ? "linkedin" : "facebook",
     postedAt: isoOrNull(lead.postedAt) ?? new Date(postedAtMs).toISOString(),
     postedAtMs,
     score: Number(lead.score) || 0,
@@ -121,6 +123,7 @@ function mergeDuplicateLead(existing, incoming, nowIso) {
   return {
     ...merged,
     id: existing.id,
+    platform: existing.platform ?? merged.platform,
     postedAt: existing.postedAt,
     postedAtMs: existing.postedAtMs,
     author: existing.author,
@@ -276,6 +279,7 @@ export class LeadStore {
         const oldFingerprint = duplicateFingerprint(existing);
         const updatedLead = {
           ...existing,
+          platform: clean.platform,
           postedAt: clean.postedAt,
           postedAtMs: clean.postedAtMs,
           score: clean.score,
@@ -342,7 +346,12 @@ export class LeadStore {
 
     for (const [id, lead] of [...this.leads]) {
       if (lead.demo) continue;
-      const result = scorePost(lead.text, { extra, minScore });
+      const platform = lead.platform === "linkedin" ? "linkedin" : "facebook";
+      const leadMinScore =
+        platform === "linkedin"
+          ? config?.linkedin?.minScore ?? minScore
+          : minScore;
+      const result = scorePost(lead.text, { extra, minScore: leadMinScore });
       if (!result.isLead) {
         this.leads.delete(id);
         removed += 1;
@@ -450,11 +459,14 @@ export class LeadStore {
     let demo = 0;
     const services = {};
     const sources = {};
+    const platforms = { facebook: 0, linkedin: 0 };
     let newest = null;
 
     for (const lead of this.leads.values()) {
       if (lead.contacted) contacted += 1;
       if (lead.demo) demo += 1;
+      const platform = lead.platform === "linkedin" ? "linkedin" : "facebook";
+      platforms[platform] += 1;
       for (const service of lead.services) {
         services[service] = (services[service] ?? 0) + 1;
       }
@@ -472,6 +484,7 @@ export class LeadStore {
       duplicates: countDuplicateLeads([...this.leads.values()]),
       services,
       sources,
+      platforms,
       blocked: {
         posts: this.blocked.ids.size,
         authors: this.blocked.authors.size,
@@ -485,6 +498,9 @@ export class LeadStore {
 
   query(params = {}, now = Date.now()) {
     const status = STATUSES.has(params.status) ? params.status : "all";
+    const platform = ["facebook", "linkedin"].includes(String(params.platform))
+      ? String(params.platform)
+      : "all";
     const services = selectedServices(params);
     const sort = SORTS.has(params.sort) ? params.sort : "newest";
     const pageSize = Math.min(
@@ -499,6 +515,11 @@ export class LeadStore {
 
     if (status === "new") items = items.filter((lead) => !lead.contacted);
     if (status === "contacted") items = items.filter((lead) => lead.contacted);
+    if (platform !== "all") {
+      items = items.filter(
+        (lead) => (lead.platform === "linkedin" ? "linkedin" : "facebook") === platform
+      );
+    }
     if (services.length > 0) {
       const needles = new Set(services);
       items = items.filter((lead) =>

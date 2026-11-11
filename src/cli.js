@@ -46,7 +46,7 @@ export function parseArgs(argv) {
 }
 
 export const HELP = `
-Facebook fresh leads (Apify)
+Facebook + LinkedIn fresh leads (Apify)
 
 Usage:
   npm start                     one run using config.json
@@ -56,13 +56,17 @@ Usage:
 Options:
   --dry-run                     use sample data, never calls Apify
   --config <path>               config file (default: ./config.json)
-  --window <minutes>            recency window (default: 10)
-  --min-score <number>          intent threshold (default: 4)
-  --limit <number>              max posts per source (default: 30)
+  --window <minutes>            Facebook recency window (default: 10)
+  --min-score <number>          Facebook intent threshold (default: 4)
+  --limit <number>              max posts per Facebook source (default: 30)
   --out <dir>                   output directory (default: ./output)
   --interval <minutes>          watch interval (default: 10)
   --max-display <number>        leads printed to console (default: 20)
   -h, --help                    show this help
+
+LinkedIn:
+  Configure linkedin.enabled and linkedin.keywords (post search queries), and
+  linkedin.datePosted in config.json or the dashboard Settings dialog.
 
 Environment:
   APIFY_TOKEN                   required for real runs (put it in .env)

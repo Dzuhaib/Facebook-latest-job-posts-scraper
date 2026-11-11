@@ -14,6 +14,27 @@ export const DEFAULTS = {
     limits: {},
     concurrency: 3
   },
+  linkedin: {
+    enabled: false,
+    actorId: "harvestapi/linkedin-post-search",
+    keywords: [
+      "hiring web developer",
+      "looking for web developer",
+      "need website developer",
+      "hiring freelance developer",
+      "looking for wordpress developer",
+      "need seo help",
+      "looking for video editor",
+      "need graphic designer",
+      "hiring copywriter"
+    ],
+    datePosted: "past24Hours",
+    windowMinutes: 1440,
+    maxResultsPerKeyword: 30,
+    minScore: 4,
+    concurrency: 2,
+    usdPer1000: 2
+  },
   intent: {
     extra: {}
   },
@@ -78,6 +99,126 @@ function normalizeLimits(value, fallback) {
     limits[url] = limit;
   }
   return limits;
+}
+
+function parseBoolean(value, fallback = false) {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+}
+
+function normalizePhraseList(value, name, { max = 50, maxLength = 80 } = {}) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) && typeof value !== "string") {
+    throw new Error(`${name} must be a list of keywords`);
+  }
+  const items = Array.isArray(value)
+    ? value
+    : String(value).split(/\r?\n|,/);
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const clean = String(item ?? "").replace(/\s+/g, " ").trim();
+    if (!clean) continue;
+    if (clean.length > maxLength) {
+      throw new Error(`${name}: "${clean.slice(0, 30)}..." is too long (max ${maxLength} characters)`);
+    }
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+const LEGACY_LINKEDIN_ACTOR = "curious_coder/linkedin-jobs-scraper";
+const LINKEDIN_INTENT_RE =
+  /\b(hiring|hire|looking for|need|needs|seeking|want|wanted|required|require|freelance|task|project|help|build|fix)\b/i;
+
+function toLinkedInPostQuery(value) {
+  const query = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!query || LINKEDIN_INTENT_RE.test(query)) return query;
+  return `need ${query}`;
+}
+
+function normalizeLinkedIn(value) {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const legacy =
+    raw.actorId === LEGACY_LINKEDIN_ACTOR ||
+    raw.locations !== undefined ||
+    raw.scrapeCompany !== undefined ||
+    raw.under10Applicants !== undefined;
+  const merged = {
+    ...DEFAULTS.linkedin,
+    ...raw,
+    ...(legacy
+      ? {
+          actorId: DEFAULTS.linkedin.actorId,
+          usdPer1000: DEFAULTS.linkedin.usdPer1000
+        }
+      : {})
+  };
+
+  const rawKeywords = normalizePhraseList(merged.keywords, "linkedin.keywords", {
+    max: 30,
+    maxLength: 120
+  });
+  const keywords = legacy
+    ? normalizePhraseList(rawKeywords.map(toLinkedInPostQuery), "linkedin.keywords", {
+        max: 30,
+        maxLength: 120
+      })
+    : rawKeywords;
+
+  const datePosted = String(merged.datePosted ?? "past24Hours").trim();
+  if (!["anyTime", "past24Hours", "pastWeek", "pastMonth"].includes(datePosted)) {
+    throw new Error(
+      `linkedin.datePosted must be anyTime, past24Hours, pastWeek, or pastMonth (got "${merged.datePosted}")`
+    );
+  }
+
+  const actorId = String(merged.actorId ?? "").trim();
+  if (!/^[\w.~-]+(?:\/[\w.~-]+)?$/.test(actorId)) {
+    throw new Error(`linkedin.actorId is invalid (got "${merged.actorId}")`);
+  }
+
+  const usdPer1000 = Number(merged.usdPer1000);
+  if (!Number.isFinite(usdPer1000) || usdPer1000 < 0 || usdPer1000 > 1000) {
+    throw new Error(
+      `linkedin.usdPer1000 must be a number between 0 and 1000 (got "${merged.usdPer1000}")`
+    );
+  }
+
+  const enabled = parseBoolean(merged.enabled, false);
+  if (enabled && keywords.length === 0) {
+    throw new Error("linkedin.keywords must contain at least one search query when LinkedIn is enabled");
+  }
+
+  return {
+    enabled,
+    actorId,
+    keywords,
+    datePosted,
+    windowMinutes: toPositiveInt(merged.windowMinutes, "linkedin.windowMinutes", {
+      min: 1,
+      max: 43200
+    }),
+    maxResultsPerKeyword: toPositiveInt(
+      merged.maxResultsPerKeyword,
+      "linkedin.maxResultsPerKeyword",
+      { min: 1, max: 1000 }
+    ),
+    minScore: toPositiveInt(merged.minScore, "linkedin.minScore", { min: 0, max: 100 }),
+    concurrency: toPositiveInt(merged.concurrency, "linkedin.concurrency", {
+      min: 1,
+      max: 5
+    }),
+    usdPer1000
+  };
 }
 
 function deepMerge(base, override) {
@@ -169,6 +310,8 @@ export function loadConfig({ cwd = process.cwd(), argv = {} } = {}) {
     concurrency
   };
 
+  config.linkedin = normalizeLinkedIn(config.linkedin);
+
   config.intent = config.intent ?? { extra: {} };
   config.intent.extra = config.intent.extra ?? {};
 
@@ -196,10 +339,12 @@ export function loadToken() {
 }
 
 export function assertSources(config) {
-  const total = config.sources.groups.length + config.sources.pages.length;
-  if (total === 0) {
+  const facebookTotal = config.sources.groups.length + config.sources.pages.length;
+  const linkedinEnabled =
+    config.linkedin?.enabled && (config.linkedin.keywords?.length ?? 0) > 0;
+  if (facebookTotal === 0 && !linkedinEnabled) {
     throw new Error(
-      "No Facebook sources configured. Add public group or page URLs to config.json under sources.groups / sources.pages."
+      "No sources configured. Add public group or page URLs under sources.groups / sources.pages, or enable LinkedIn post search under linkedin.enabled."
     );
   }
 }

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Find fresh (last 10 minutes) Facebook posts where people are hiring or need automation, web development, or SEO services. Powered by Apify.",
+  "description": "Find fresh Facebook buying-intent posts and LinkedIn hiring posts that match your services. Powered by Apify.",
   "scripts": {
     "start": "node src/index.js",
     "watch": "node src/watch.js",

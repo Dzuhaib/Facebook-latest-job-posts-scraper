@@ -51,8 +51,11 @@ async function main() {
       };
     });
 
+  const linkedinWindow = config.linkedin?.enabled
+    ? `, LinkedIn window ${config.linkedin.windowMinutes} min`
+    : "";
   console.log(
-    `Watching every ${config.watchIntervalMinutes} min (window ${config.windowMinutes} min). Press Ctrl+C to stop.`
+    `Watching every ${config.watchIntervalMinutes} min (Facebook window ${config.windowMinutes} min${linkedinWindow}). Press Ctrl+C to stop.`
   );
 
   while (!stopped) {

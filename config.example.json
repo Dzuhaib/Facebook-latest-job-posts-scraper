@@ -11,6 +11,27 @@
     "limits": {},
     "concurrency": 3
   },
+  "linkedin": {
+    "enabled": false,
+    "actorId": "harvestapi/linkedin-post-search",
+    "keywords": [
+      "hiring web developer",
+      "looking for web developer",
+      "need website developer",
+      "hiring freelance developer",
+      "looking for wordpress developer",
+      "need seo help",
+      "looking for video editor",
+      "need graphic designer",
+      "hiring copywriter"
+    ],
+    "datePosted": "past24Hours",
+    "windowMinutes": 1440,
+    "maxResultsPerKeyword": 30,
+    "minScore": 4,
+    "concurrency": 2,
+    "usdPer1000": 2
+  },
   "intent": {
     "extra": {
       "services": {

@@ -7,6 +7,7 @@ function brief(lead) {
   const services = Array.isArray(lead.services) ? lead.services.join(", ") : "";
   return {
     id: lead.id,
+    platform: lead.platform ?? "facebook",
     score: lead.score,
     services,
     author: lead.author,
@@ -17,11 +18,12 @@ function brief(lead) {
 }
 
 function buildMessage(leads) {
-  const lines = [`${leads.length} new Facebook lead${leads.length === 1 ? "" : "s"}`];
+  const lines = [`${leads.length} new lead${leads.length === 1 ? "" : "s"}`];
   for (const lead of leads.slice(0, MAX_LEADS)) {
+    const platform = lead.platform === "linkedin" ? "LinkedIn" : "Facebook";
     lines.push(
       "",
-      `[${lead.score}] ${lead.services || "lead"} - ${lead.author || "Unknown"}`,
+      `[${platform}] [${lead.score}] ${lead.services || "lead"} - ${lead.author || "Unknown"}`,
       String(lead.text ?? "").replace(/\s+/g, " ").slice(0, 220),
       lead.postUrl ?? ""
     );
@@ -56,12 +58,12 @@ export async function notifyNewLeads(leads, { log = () => {} } = {}) {
     leads: safe.slice(0, MAX_LEADS).map(brief)
   };
 
-  const jobs = [];
+  const tasks = [];
 
   const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
   const telegramChat = process.env.TELEGRAM_CHAT_ID;
   if (telegramToken && telegramChat) {
-    jobs.push(
+    tasks.push(
       postJson(`https://api.telegram.org/bot${telegramToken}/sendMessage`, {
         chat_id: telegramChat,
         text: message,
@@ -72,21 +74,21 @@ export async function notifyNewLeads(leads, { log = () => {} } = {}) {
 
   const discordUrl = process.env.DISCORD_WEBHOOK_URL;
   if (discordUrl) {
-    jobs.push(
+    tasks.push(
       postJson(discordUrl, { content: message.slice(0, 1900) }).then(() => "discord")
     );
   }
 
   const webhookUrl = process.env.NOTIFY_WEBHOOK_URL;
   if (webhookUrl) {
-    jobs.push(postJson(webhookUrl, payload).then(() => "webhook"));
+    tasks.push(postJson(webhookUrl, payload).then(() => "webhook"));
   }
 
-  if (jobs.length === 0) return { sent: 0, skipped: true, errors: [] };
+  if (tasks.length === 0) return { sent: 0, skipped: true, errors: [] };
 
   const errors = [];
   let sent = 0;
-  const settled = await Promise.allSettled(jobs);
+  const settled = await Promise.allSettled(tasks);
   for (const outcome of settled) {
     if (outcome.status === "fulfilled") {
       sent += 1;

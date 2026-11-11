@@ -38,6 +38,83 @@ function parseUrls(value, name) {
   return [...new Set(urls)];
 }
 
+function parseList(value, name, { max = 50, maxLength = 80 } = {}) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(`${name} must be a list`);
+
+  const out = [];
+  const seen = new Set();
+  for (const item of value) {
+    const clean = String(item ?? "").replace(/\s+/g, " ").trim();
+    if (!clean) continue;
+    if (clean.length > maxLength) {
+      throw new Error(`${name}: "${clean.slice(0, 24)}..." is too long (max ${maxLength} characters)`);
+    }
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(clean);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function parseBoolean(value, fallback = false) {
+  if (value === undefined) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
+}
+
+function parseLinkedIn(value, current) {
+  if (value === undefined) return current;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("linkedin must be an object");
+  }
+
+  const next = { ...current };
+
+  if (value.enabled !== undefined) next.enabled = parseBoolean(value.enabled);
+  const keywords = parseList(value.keywords, "linkedin.keywords", {
+    max: 30,
+    maxLength: 120
+  });
+  if (keywords !== undefined) next.keywords = keywords;
+
+  if (value.datePosted !== undefined) {
+    const datePosted = String(value.datePosted).trim();
+    if (!["anyTime", "past24Hours", "pastWeek", "pastMonth"].includes(datePosted)) {
+      throw new Error("linkedin.datePosted must be anyTime, past24Hours, pastWeek, or pastMonth");
+    }
+    next.datePosted = datePosted;
+  }
+
+  if (value.windowMinutes !== undefined) {
+    next.windowMinutes = intInRange(value.windowMinutes, "linkedin.windowMinutes", 1, 43200);
+  }
+  if (value.maxResultsPerKeyword !== undefined) {
+    next.maxResultsPerKeyword = intInRange(
+      value.maxResultsPerKeyword,
+      "linkedin.maxResultsPerKeyword",
+      1,
+      1000
+    );
+  }
+  if (value.minScore !== undefined) {
+    next.minScore = intInRange(value.minScore, "linkedin.minScore", 0, 100);
+  }
+  if (value.concurrency !== undefined) {
+    next.concurrency = intInRange(value.concurrency, "linkedin.concurrency", 1, 5);
+  }
+  if (next.enabled && (!Array.isArray(next.keywords) || next.keywords.length === 0)) {
+    throw new Error("Add at least one LinkedIn search query before enabling LinkedIn posts");
+  }
+
+  return next;
+}
+
 function parseSkills(value) {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) throw new Error("skills must be a list of keywords");
@@ -102,7 +179,8 @@ export function getSettings(cwd) {
     pages: config.sources.pages,
     disabledSources: config.sources.disabled ?? [],
     limits: config.sources.limits ?? {},
-    skills: config.intent.extra.skills ?? []
+    skills: config.intent.extra.skills ?? [],
+    linkedin: config.linkedin
   };
 }
 
@@ -142,6 +220,12 @@ export function saveSettings(cwd, input = {}) {
   const disabledSources =
     parseUrls(input.disabledSources, "disabledSources") ?? config.sources.disabled ?? [];
   const skills = parseSkills(input.skills) ?? config.intent.extra.skills ?? [];
+  const linkedin = parseLinkedIn(input.linkedin, config.linkedin);
+
+  const rawLinkedIn =
+    raw.linkedin && typeof raw.linkedin === "object" && !Array.isArray(raw.linkedin)
+      ? raw.linkedin
+      : {};
 
   const next = {
     ...raw,
@@ -155,6 +239,10 @@ export function saveSettings(cwd, input = {}) {
       pages,
       disabled: disabledSources,
       concurrency
+    },
+    linkedin: {
+      ...rawLinkedIn,
+      ...linkedin
     },
     intent: {
       ...(raw.intent ?? {}),
